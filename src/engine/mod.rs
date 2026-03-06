@@ -21,10 +21,46 @@ pub type FoldResult = Option<HashMap<String, FieldValue>>;
 /// Implements the monadic bind with short-circuit failure propagation:
 /// if any step in a composed fold chain yields Nothing, the entire chain yields Nothing.
 pub struct FoldEngine {
-    pub registry: FoldRegistry,
-    pub store: AppendOnlyStore,
-    pub audit: AuditLog,
-    pub trust_graph: TrustGraph,
+    pub(crate) registry: FoldRegistry,
+    pub(crate) store: AppendOnlyStore,
+    pub(crate) audit: AuditLog,
+    pub(crate) trust_graph: TrustGraph,
+}
+
+// Public accessors and setup methods.
+// For production use, prefer FoldDbApi which enforces access control.
+impl FoldEngine {
+    pub fn registry(&self) -> &FoldRegistry {
+        &self.registry
+    }
+
+    pub fn store(&self) -> &AppendOnlyStore {
+        &self.store
+    }
+
+    pub fn audit(&self) -> &AuditLog {
+        &self.audit
+    }
+
+    pub fn trust_graph(&self) -> &TrustGraph {
+        &self.trust_graph
+    }
+
+    pub fn register_fold(&mut self, fold: crate::types::Fold) -> Result<(), crate::registry::RegistryError> {
+        self.registry.register_fold(fold)
+    }
+
+    pub fn register_transform(&mut self, transform: crate::transform::RegisteredTransform) -> Result<String, crate::registry::RegistryError> {
+        self.registry.register_transform(transform)
+    }
+
+    pub fn assign_trust(&mut self, owner: &str, user: &str, distance: u64) {
+        self.trust_graph.assign_trust(owner, user, distance);
+    }
+
+    pub fn registry_mut(&mut self) -> &mut FoldRegistry {
+        &mut self.registry
+    }
 }
 
 impl FoldEngine {
@@ -79,7 +115,7 @@ impl FoldEngine {
                         &context.user_id,
                         AuditEventKind::AccessDenied {
                             fold_id: fold_id.to_string(),
-                            reason: format!("{reason:?}"),
+                            reason: reason.to_string(),
                         },
                     );
                     return None;
@@ -153,10 +189,10 @@ impl FoldEngine {
                     &context.user_id,
                     AuditEventKind::AccessDenied {
                         fold_id: fold_id.to_string(),
-                        reason: format!("{reason:?}"),
+                        reason: reason.to_string(),
                     },
                 );
-                return Err(WriteError::AccessDenied(format!("{reason:?}")));
+                return Err(WriteError::AccessDenied(reason.to_string()));
             }
         }
 
@@ -247,8 +283,12 @@ impl FoldEngine {
                 let owner_context = AccessContext::owner(&source_fold_owner);
                 let source_result = self.query(source_fold_id, &owner_context)?;
 
-                // Get the source field value
-                let source_value = source_result.get(&field.name)?;
+                // Get the source field value (use source_field_name if mapped, else same name)
+                let source_name = field
+                    .source_field_name
+                    .as_deref()
+                    .unwrap_or(&field.name);
+                let source_value = source_result.get(source_name)?;
 
                 // Apply the transform
                 let transform = self.registry.get_transform(transform_id)?;

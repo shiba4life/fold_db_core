@@ -23,7 +23,7 @@ fn setup_engine_with_writable_fold(fold_id: &str) -> FoldEngine {
             TrustDistancePolicy::new(10, 10),
         )],
     );
-    engine.registry.register_fold(fold).unwrap();
+    engine.register_fold(fold).unwrap();
     engine
 }
 
@@ -42,7 +42,7 @@ fn write_creates_store_entry() {
         )
         .unwrap();
 
-    let current = engine.store.get_current("s1", "data");
+    let current = engine.store().get_current("s1", "data");
     assert!(current.is_some());
     assert_eq!(current.unwrap().value, FieldValue::String("v1".to_string()));
 }
@@ -64,11 +64,11 @@ fn multiple_writes_preserve_history() {
             .unwrap();
     }
 
-    let history = engine.store.get_history("s2", "data");
+    let history = engine.store().get_history("s2", "data");
     assert_eq!(history.len(), 5);
 
     // Current value is last written
-    let current = engine.store.get_current("s2", "data").unwrap();
+    let current = engine.store().get_current("s2", "data").unwrap();
     assert_eq!(current.value, FieldValue::String("v5".to_string()));
 }
 
@@ -106,32 +106,32 @@ fn version_retrieval() {
         .unwrap();
 
     assert_eq!(
-        engine.store.get_version("s3", "data", 0).unwrap().value,
+        engine.store().get_version("s3", "data", 0).unwrap().value,
         FieldValue::String("first".to_string())
     );
     assert_eq!(
-        engine.store.get_version("s3", "data", 1).unwrap().value,
+        engine.store().get_version("s3", "data", 1).unwrap().value,
         FieldValue::String("second".to_string())
     );
     assert_eq!(
-        engine.store.get_version("s3", "data", 2).unwrap().value,
+        engine.store().get_version("s3", "data", 2).unwrap().value,
         FieldValue::String("third".to_string())
     );
-    assert!(engine.store.get_version("s3", "data", 99).is_none());
+    assert!(engine.store().get_version("s3", "data", 99).is_none());
 }
 
 #[test]
 fn unwritten_field_returns_none() {
     let engine = setup_engine_with_writable_fold("s4");
-    assert!(engine.store.get_current("s4", "data").is_none());
-    assert!(engine.store.get_current("nonexistent", "data").is_none());
-    assert!(engine.store.get_history("s4", "data").is_empty());
+    assert!(engine.store().get_current("s4", "data").is_none());
+    assert!(engine.store().get_current("nonexistent", "data").is_none());
+    assert!(engine.store().get_history("s4", "data").is_empty());
 }
 
 #[test]
 fn store_entries_have_writer_id() {
     let mut engine = setup_engine_with_writable_fold("s5");
-    engine.trust_graph.assign_trust("owner", "alice", 1);
+    engine.assign_trust("owner", "alice", 1);
 
     let ctx = AccessContext::new("alice", 1);
     engine
@@ -144,7 +144,7 @@ fn store_entries_have_writer_id() {
         )
         .unwrap();
 
-    let entry = engine.store.get_current("s5", "data").unwrap();
+    let entry = engine.store().get_current("s5", "data").unwrap();
     assert_eq!(entry.writer_id, "alice");
 }
 
@@ -169,7 +169,7 @@ fn total_entries_across_fields() {
             ),
         ],
     );
-    engine.registry.register_fold(fold).unwrap();
+    engine.register_fold(fold).unwrap();
 
     let ctx = AccessContext::owner("owner");
     engine
@@ -182,5 +182,5 @@ fn total_entries_across_fields() {
         .write("multi_field", "a", FieldValue::Integer(3), &ctx, vec![])
         .unwrap();
 
-    assert_eq!(engine.store.total_entries(), 3);
+    assert_eq!(engine.store().total_entries(), 3);
 }

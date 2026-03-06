@@ -46,8 +46,8 @@ fn all_or_nothing_one_field_denied_means_nothing() {
             ),
         ],
     );
-    engine.registry.register_fold(fold).unwrap();
-    engine.trust_graph.assign_trust("owner", "user", 3);
+    engine.register_fold(fold).unwrap();
+    engine.assign_trust("owner", "user", 3);
 
     let ctx = AccessContext::new("user", 3);
     let result = engine.query("mixed", &ctx);
@@ -84,8 +84,8 @@ fn all_fields_pass_returns_full_projection() {
             ),
         ],
     );
-    engine.registry.register_fold(fold).unwrap();
-    engine.trust_graph.assign_trust("owner", "user", 2);
+    engine.register_fold(fold).unwrap();
+    engine.assign_trust("owner", "user", 2);
 
     let ctx = AccessContext::new("user", 2);
     let result = engine.query("all_pass", &ctx);
@@ -127,7 +127,7 @@ fn three_level_fold_composition() {
         }),
         inverse: None,
     };
-    engine.registry.register_transform(double).unwrap();
+    engine.register_transform(double).unwrap();
 
     let negate = RegisteredTransform {
         def: TransformDef {
@@ -144,7 +144,7 @@ fn three_level_fold_composition() {
         }),
         inverse: None,
     };
-    engine.registry.register_transform(negate).unwrap();
+    engine.register_transform(negate).unwrap();
 
     // F1: base fold with value=5
     let f1 = Fold::new(
@@ -157,7 +157,7 @@ fn three_level_fold_composition() {
             TrustDistancePolicy::new(0, 10),
         )],
     );
-    engine.registry.register_fold(f1).unwrap();
+    engine.register_fold(f1).unwrap();
 
     // F2: derives from F1 via double
     let mut f2_field = Field::new(
@@ -169,7 +169,7 @@ fn three_level_fold_composition() {
     f2_field.transform_id = Some("double".to_string());
     f2_field.source_fold_id = Some("f1".to_string());
     let f2 = Fold::new("f2", "owner", vec![f2_field]);
-    engine.registry.register_fold(f2).unwrap();
+    engine.register_fold(f2).unwrap();
 
     // F3: derives from F2 via negate
     let mut f3_field = Field::new(
@@ -181,7 +181,7 @@ fn three_level_fold_composition() {
     f3_field.transform_id = Some("negate".to_string());
     f3_field.source_fold_id = Some("f2".to_string());
     let f3 = Fold::new("f3", "owner", vec![f3_field]);
-    engine.registry.register_fold(f3).unwrap();
+    engine.register_fold(f3).unwrap();
 
     let ctx = AccessContext::owner("owner");
 
@@ -227,9 +227,9 @@ fn same_data_multiple_folds_different_policies() {
         )],
     );
 
-    engine.registry.register_fold(open).unwrap();
-    engine.registry.register_fold(restricted).unwrap();
-    engine.trust_graph.assign_trust("owner", "user", 3);
+    engine.register_fold(open).unwrap();
+    engine.register_fold(restricted).unwrap();
+    engine.assign_trust("owner", "user", 3);
 
     let ctx = AccessContext::new("user", 3);
     assert!(engine.query("open", &ctx).is_some());
@@ -240,7 +240,7 @@ fn same_data_multiple_folds_different_policies() {
 fn empty_fold_returns_empty_projection() {
     let mut engine = FoldEngine::new();
     let fold = Fold::new("empty", "owner", vec![]);
-    engine.registry.register_fold(fold).unwrap();
+    engine.register_fold(fold).unwrap();
 
     let ctx = AccessContext::owner("owner");
     let result = engine.query("empty", &ctx);

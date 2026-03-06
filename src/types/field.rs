@@ -62,6 +62,8 @@ pub struct Field {
     pub transform_id: Option<String>,
     /// The source fold ID for derived fields.
     pub source_fold_id: Option<String>,
+    /// The field name in the source fold. If None, uses this field's name.
+    pub source_field_name: Option<String>,
 }
 
 impl Field {
@@ -79,6 +81,7 @@ impl Field {
             capabilities: Vec::new(),
             transform_id: None,
             source_fold_id: None,
+            source_field_name: None,
         }
     }
 }

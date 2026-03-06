@@ -37,6 +37,28 @@ pub enum AccessDenialReason {
     },
 }
 
+impl std::fmt::Display for AccessDenialReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::TrustDistance { required, actual } => {
+                write!(f, "trust distance {actual} exceeds maximum {required}")
+            }
+            Self::CapabilityMissing { field } => {
+                write!(f, "missing capability for field '{field}'")
+            }
+            Self::CapabilityExhausted { field } => {
+                write!(f, "capability quota exhausted for field '{field}'")
+            }
+            Self::SecurityLabel { field, reason } => {
+                write!(f, "security label violation on field '{field}': {reason}")
+            }
+            Self::PaymentRequired { fold_id, cost } => {
+                write!(f, "payment of {cost} required for fold '{fold_id}'")
+            }
+        }
+    }
+}
+
 /// Check all four access control layers (Section 4) for a read operation on a field.
 /// All checks are conjunctive: every applicable check must succeed.
 pub fn check_read_access(

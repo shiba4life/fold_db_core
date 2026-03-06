@@ -28,6 +28,7 @@ fn public_field(name: &str, value: FieldValue) -> FieldDef {
         capabilities: vec![],
         transform_id: None,
         source_fold_id: None,
+            source_field_name: None,
     }
 }
 
@@ -50,6 +51,7 @@ fn medical_records_multi_role_access() {
                 capabilities: vec![],
                 transform_id: None,
                 source_fold_id: None,
+            source_field_name: None,
             },
             FieldDef {
                 name: "diagnosis".to_string(),
@@ -59,6 +61,7 @@ fn medical_records_multi_role_access() {
                 capabilities: vec![],
                 transform_id: None,
                 source_fold_id: None,
+            source_field_name: None,
             },
         ],
         payment_gate: None,
@@ -78,6 +81,7 @@ fn medical_records_multi_role_access() {
                 capabilities: vec![],
                 transform_id: None,
                 source_fold_id: None,
+            source_field_name: None,
             },
             FieldDef {
                 name: "balance".to_string(),
@@ -87,6 +91,7 @@ fn medical_records_multi_role_access() {
                 capabilities: vec![],
                 transform_id: None,
                 source_fold_id: None,
+            source_field_name: None,
             },
         ],
         payment_gate: None,
@@ -195,6 +200,7 @@ fn transform_chain_with_rollback() {
             capabilities: vec![],
             transform_id: Some("double".to_string()),
             source_fold_id: Some("base".to_string()),
+            source_field_name: None,
         }],
         payment_gate: None,
     })
@@ -306,6 +312,7 @@ fn paid_content_marketplace() {
                 capabilities: vec![],
                 transform_id: None,
                 source_fold_id: None,
+            source_field_name: None,
             },
         ],
         payment_gate: Some(PaymentGate::Fixed(5.0)),
@@ -366,6 +373,7 @@ fn capability_gated_writes_with_exhaustion() {
             }],
             transform_id: None,
             source_fold_id: None,
+            source_field_name: None,
         }],
         payment_gate: None,
     })
@@ -434,6 +442,7 @@ fn trust_revocation_cascades_to_dependents() {
             capabilities: vec![],
             transform_id: None,
             source_fold_id: None,
+            source_field_name: None,
         }],
         payment_gate: None,
     })
@@ -602,6 +611,7 @@ fn full_lifecycle() {
             capabilities: vec![],
             transform_id: Some("upper".to_string()),
             source_fold_id: Some("profile".to_string()),
+            source_field_name: None,
         }],
         payment_gate: None,
     })
@@ -740,6 +750,7 @@ fn write_to_irreversible_derived_fold_denied() {
             capabilities: vec![],
             transform_id: Some("hash".to_string()),
             source_fold_id: Some("src".to_string()),
+            source_field_name: None,
         }],
         payment_gate: None,
     })
@@ -795,6 +806,7 @@ fn same_data_exposed_through_multiple_folds() {
             capabilities: vec![],
             transform_id: None,
             source_fold_id: None,
+            source_field_name: None,
         }],
         payment_gate: None,
     })

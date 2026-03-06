@@ -38,6 +38,8 @@ pub struct FieldDef {
     pub capabilities: Vec<CapabilityConstraint>,
     pub transform_id: Option<String>,
     pub source_fold_id: Option<String>,
+    /// The field name in the source fold. If None, uses this field's name.
+    pub source_field_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -144,6 +146,7 @@ impl FoldDbApi {
             f.capabilities = fd.capabilities;
             f.transform_id = fd.transform_id;
             f.source_fold_id = fd.source_fold_id;
+            f.source_field_name = fd.source_field_name;
             f
         }).collect();
 
@@ -277,6 +280,9 @@ impl FoldDbApi {
         &mut self,
         req: RollbackRequest,
     ) -> Result<WriteResponse, ApiError> {
+        // Check write access before exposing historical values
+        self.require_write_access(&req.fold_id, &req.field_name, &req.context)?;
+
         // Read the target version
         let entry = self
             .engine
@@ -346,18 +352,8 @@ impl FoldDbApi {
         field_name: &str,
         context: &AccessContext,
     ) -> Result<(), ApiError> {
-        let context = self.engine.resolve_trust_distance(fold_id, context);
-
-        let fold = self
-            .engine
-            .registry
-            .get_fold(fold_id)
-            .ok_or_else(|| ApiError::FoldNotFound(fold_id.to_string()))?
-            .clone();
-
-        let field = fold
-            .field(field_name)
-            .ok_or_else(|| ApiError::FieldNotFound(field_name.to_string()))?;
+        let (fold, context) = self.resolve_fold_and_context(fold_id, field_name, context)?;
+        let field = fold.field(field_name).unwrap();
 
         match crate::access::check_read_access(
             field,
@@ -367,9 +363,55 @@ impl FoldDbApi {
         ) {
             crate::access::AccessDecision::Granted => Ok(()),
             crate::access::AccessDecision::Denied(reason) => {
-                Err(ApiError::AccessDenied(format!("{reason:?}")))
+                Err(ApiError::AccessDenied(reason.to_string()))
             }
         }
+    }
+
+    /// Check that the caller has write access to the specified field.
+    /// Used to gate rollback before reading historical values.
+    fn require_write_access(
+        &mut self,
+        fold_id: &str,
+        field_name: &str,
+        context: &AccessContext,
+    ) -> Result<(), ApiError> {
+        let (fold, context) = self.resolve_fold_and_context(fold_id, field_name, context)?;
+        let field = fold.field(field_name).unwrap();
+
+        match crate::access::check_write_access(
+            field,
+            &context,
+            fold_id,
+            fold.payment_gate.as_ref(),
+        ) {
+            crate::access::AccessDecision::Granted => Ok(()),
+            crate::access::AccessDecision::Denied(reason) => {
+                Err(ApiError::AccessDenied(reason.to_string()))
+            }
+        }
+    }
+
+    fn resolve_fold_and_context(
+        &self,
+        fold_id: &str,
+        field_name: &str,
+        context: &AccessContext,
+    ) -> Result<(Fold, AccessContext), ApiError> {
+        let context = self.engine.resolve_trust_distance(fold_id, context);
+
+        let fold = self
+            .engine
+            .registry
+            .get_fold(fold_id)
+            .ok_or_else(|| ApiError::FoldNotFound(fold_id.to_string()))?
+            .clone();
+
+        // Verify field exists
+        fold.field(field_name)
+            .ok_or_else(|| ApiError::FieldNotFound(field_name.to_string()))?;
+
+        Ok((fold, context))
     }
 }
 

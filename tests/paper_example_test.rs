@@ -25,10 +25,8 @@ fn setup_hospital_engine() -> FoldEngine {
     let patient_id = "patient_alice";
 
     // Trust graph: owner assigns distances
-    engine.trust_graph.assign_trust(patient_id, "dr_smith", 1); // attending physician
-    engine
-        .trust_graph
-        .assign_trust(patient_id, "researcher_bob", 3); // external researcher
+    engine.assign_trust(patient_id, "dr_smith", 1); // attending physician
+    engine.assign_trust(patient_id, "researcher_bob", 3); // external researcher
 
     // Register the irreversible hash transform
     let hash_transform = RegisteredTransform {
@@ -50,10 +48,7 @@ fn setup_hospital_engine() -> FoldEngine {
         }),
         inverse: None, // irreversible
     };
-    engine
-        .registry
-        .register_transform(hash_transform)
-        .unwrap();
+    engine.register_transform(hash_transform).unwrap();
 
     // Fold 1: Clinical access (F_clin) — W1 R1
     let f_clin = Fold::new(
@@ -80,7 +75,7 @@ fn setup_hospital_engine() -> FoldEngine {
             ),
         ],
     );
-    engine.registry.register_fold(f_clin).unwrap();
+    engine.register_fold(f_clin).unwrap();
 
     // Fold 2: Research access (F_res) — W0 R3, with hash transform on name
     let mut name_field = Field::new(
@@ -111,7 +106,7 @@ fn setup_hospital_engine() -> FoldEngine {
             ),
         ],
     );
-    engine.registry.register_fold(f_res).unwrap();
+    engine.register_fold(f_res).unwrap();
 
     engine
 }
@@ -274,7 +269,7 @@ fn write_updates_value_and_is_queryable() {
     );
 
     // History should have 1 entry
-    let history = engine.store.get_history("f_clin", "diagnosis");
+    let history = engine.store().get_history("f_clin", "diagnosis");
     assert_eq!(history.len(), 1);
 }
 
@@ -317,10 +312,10 @@ fn audit_log_records_all_events() {
         )
         .unwrap();
 
-    assert!(engine.audit.total_events() >= 3);
+    assert!(engine.audit().total_events() >= 3);
 
     // Check denied events for researcher
-    let researcher_events = engine.audit.events_for_user("researcher_bob");
+    let researcher_events = engine.audit().events_for_user("researcher_bob");
     assert!(!researcher_events.is_empty());
 }
 
@@ -354,7 +349,7 @@ fn payment_gate_blocks_without_payment() {
     let mut engine = setup_hospital_engine();
 
     // Add a payment gate to F_clin
-    if let Some(fold) = engine.registry.get_fold_mut("f_clin") {
+    if let Some(fold) = engine.registry_mut().get_fold_mut("f_clin") {
         fold.payment_gate = Some(fold_db_core::access::PaymentGate::Fixed(10.0));
     }
 

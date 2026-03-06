@@ -36,7 +36,7 @@ fn reversible_transform_write_propagates_inverse() {
             other => other.clone(),
         })),
     };
-    engine.registry.register_transform(c_to_f).unwrap();
+    engine.register_transform(c_to_f).unwrap();
 
     // Source fold: temperature in Celsius
     let source = Fold::new(
@@ -49,7 +49,7 @@ fn reversible_transform_write_propagates_inverse() {
             TrustDistancePolicy::new(10, 10),
         )],
     );
-    engine.registry.register_fold(source).unwrap();
+    engine.register_fold(source).unwrap();
 
     // Derived fold: temperature in Fahrenheit
     let mut f_field = Field::new(
@@ -61,7 +61,7 @@ fn reversible_transform_write_propagates_inverse() {
     f_field.transform_id = Some("c_to_f".to_string());
     f_field.source_fold_id = Some("temp_c".to_string());
     let derived = Fold::new("temp_f", "owner", vec![f_field]);
-    engine.registry.register_fold(derived).unwrap();
+    engine.register_fold(derived).unwrap();
 
     let ctx = AccessContext::owner("owner");
 
@@ -110,7 +110,7 @@ fn irreversible_transform_rejects_writes() {
         }),
         inverse: None,
     };
-    engine.registry.register_transform(hash_transform).unwrap();
+    engine.register_transform(hash_transform).unwrap();
 
     let source = Fold::new(
         "src",
@@ -122,7 +122,7 @@ fn irreversible_transform_rejects_writes() {
             TrustDistancePolicy::new(10, 10),
         )],
     );
-    engine.registry.register_fold(source).unwrap();
+    engine.register_fold(source).unwrap();
 
     let mut derived_field = Field::new(
         "name",
@@ -133,7 +133,7 @@ fn irreversible_transform_rejects_writes() {
     derived_field.transform_id = Some("hash".to_string());
     derived_field.source_fold_id = Some("src".to_string());
     let derived = Fold::new("hashed", "owner", vec![derived_field]);
-    engine.registry.register_fold(derived).unwrap();
+    engine.register_fold(derived).unwrap();
 
     let ctx = AccessContext::owner("owner");
 
@@ -173,7 +173,7 @@ fn irreversible_transform_with_inverse_rejected_at_registration() {
         inverse: Some(Box::new(|v| v.clone())), // invalid!
     };
 
-    let result = engine.registry.register_transform(bad_transform);
+    let result = engine.register_transform(bad_transform);
     assert!(result.is_err());
 }
 
@@ -194,7 +194,7 @@ fn reversible_transform_without_inverse_rejected_at_registration() {
         inverse: None, // must provide inverse for reversible!
     };
 
-    let result = engine.registry.register_transform(bad_transform);
+    let result = engine.register_transform(bad_transform);
     assert!(result.is_err());
 }
 
@@ -218,7 +218,7 @@ fn transform_determinism_same_input_same_output() {
         }),
         inverse: None,
     };
-    engine.registry.register_transform(upper).unwrap();
+    engine.register_transform(upper).unwrap();
 
     let source = Fold::new(
         "src",
@@ -230,7 +230,7 @@ fn transform_determinism_same_input_same_output() {
             TrustDistancePolicy::new(10, 10),
         )],
     );
-    engine.registry.register_fold(source).unwrap();
+    engine.register_fold(source).unwrap();
 
     let mut derived_field = Field::new(
         "text",
@@ -241,7 +241,7 @@ fn transform_determinism_same_input_same_output() {
     derived_field.transform_id = Some("upper".to_string());
     derived_field.source_fold_id = Some("src".to_string());
     let derived = Fold::new("upper_fold", "owner", vec![derived_field]);
-    engine.registry.register_fold(derived).unwrap();
+    engine.register_fold(derived).unwrap();
 
     let ctx = AccessContext::owner("owner");
 

@@ -34,8 +34,8 @@ fn read_capability_grants_access() {
     });
 
     let fold = Fold::new("cap_fold", "owner", vec![field]);
-    engine.registry.register_fold(fold).unwrap();
-    engine.trust_graph.assign_trust("owner", "alice", 1);
+    engine.register_fold(fold).unwrap();
+    engine.assign_trust("owner", "alice", 1);
 
     // Alice with the right key can read
     let mut ctx = AccessContext::new("alice", 1);
@@ -64,8 +64,8 @@ fn missing_capability_key_denies_access() {
     });
 
     let fold = Fold::new("cap_fold", "owner", vec![field]);
-    engine.registry.register_fold(fold).unwrap();
-    engine.trust_graph.assign_trust("owner", "bob", 1);
+    engine.register_fold(fold).unwrap();
+    engine.assign_trust("owner", "bob", 1);
 
     // Bob has wrong key — denied
     let mut ctx = AccessContext::new("bob", 1);
@@ -91,8 +91,8 @@ fn read_capability_quota_decrements() {
     });
 
     let fold = Fold::new("quota_fold", "owner", vec![field]);
-    engine.registry.register_fold(fold).unwrap();
-    engine.trust_graph.assign_trust("owner", "reader", 1);
+    engine.register_fold(fold).unwrap();
+    engine.assign_trust("owner", "reader", 1);
 
     let mut ctx = AccessContext::new("reader", 1);
     ctx.public_keys.push(key);
@@ -123,8 +123,8 @@ fn write_capability_quota_decrements() {
     });
 
     let fold = Fold::new("wq_fold", "owner", vec![field]);
-    engine.registry.register_fold(fold).unwrap();
-    engine.trust_graph.assign_trust("owner", "writer", 1);
+    engine.register_fold(fold).unwrap();
+    engine.assign_trust("owner", "writer", 1);
 
     let mut ctx = AccessContext::new("writer", 1);
     ctx.public_keys.push(key);
@@ -169,21 +169,21 @@ fn trust_distance_and_capability_are_conjunctive() {
     });
 
     let fold = Fold::new("conj_fold", "owner", vec![field]);
-    engine.registry.register_fold(fold).unwrap();
+    engine.register_fold(fold).unwrap();
 
     // User with right key but trust distance too high → denied
-    engine.trust_graph.assign_trust("owner", "far_user", 5);
+    engine.assign_trust("owner", "far_user", 5);
     let mut ctx = AccessContext::new("far_user", 5);
     ctx.public_keys.push(key.clone());
     assert!(engine.query("conj_fold", &ctx).is_none());
 
     // User with right trust but no key → denied
-    engine.trust_graph.assign_trust("owner", "no_key_user", 1);
+    engine.assign_trust("owner", "no_key_user", 1);
     let ctx = AccessContext::new("no_key_user", 1);
     assert!(engine.query("conj_fold", &ctx).is_none());
 
     // User with right trust AND right key → granted
-    engine.trust_graph.assign_trust("owner", "good_user", 1);
+    engine.assign_trust("owner", "good_user", 1);
     let mut ctx = AccessContext::new("good_user", 1);
     ctx.public_keys.push(key);
     assert!(engine.query("conj_fold", &ctx).is_some());
@@ -202,8 +202,8 @@ fn no_capability_constraints_means_no_key_needed() {
     );
 
     let fold = Fold::new("open_fold", "owner", vec![field]);
-    engine.registry.register_fold(fold).unwrap();
-    engine.trust_graph.assign_trust("owner", "anyone", 3);
+    engine.register_fold(fold).unwrap();
+    engine.assign_trust("owner", "anyone", 3);
 
     let ctx = AccessContext::new("anyone", 3);
     assert!(engine.query("open_fold", &ctx).is_some());

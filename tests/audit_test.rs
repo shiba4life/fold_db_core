@@ -23,13 +23,13 @@ fn successful_read_is_audited() {
             TrustDistancePolicy::new(10, 10),
         )],
     );
-    engine.registry.register_fold(fold).unwrap();
+    engine.register_fold(fold).unwrap();
 
     let ctx = AccessContext::owner("owner");
     engine.query("audited", &ctx);
 
-    assert_eq!(engine.audit.total_events(), 1);
-    let events = engine.audit.events_for_fold("audited");
+    assert_eq!(engine.audit().total_events(), 1);
+    let events = engine.audit().events_for_fold("audited");
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].user_id, "owner");
 }
@@ -48,15 +48,15 @@ fn denied_read_is_audited() {
             TrustDistancePolicy::new(0, 0), // owner only
         )],
     );
-    engine.registry.register_fold(fold).unwrap();
-    engine.trust_graph.assign_trust("owner", "stranger", 5);
+    engine.register_fold(fold).unwrap();
+    engine.assign_trust("owner", "stranger", 5);
 
     let ctx = AccessContext::new("stranger", 5);
     let result = engine.query("restricted", &ctx);
     assert!(result.is_none());
 
     // Denial should still be recorded
-    let events = engine.audit.events_for_fold("restricted");
+    let events = engine.audit().events_for_fold("restricted");
     assert!(!events.is_empty());
 }
 
@@ -74,7 +74,7 @@ fn successful_write_is_audited() {
             TrustDistancePolicy::new(10, 10),
         )],
     );
-    engine.registry.register_fold(fold).unwrap();
+    engine.register_fold(fold).unwrap();
 
     let ctx = AccessContext::owner("owner");
     engine
@@ -87,7 +87,7 @@ fn successful_write_is_audited() {
         )
         .unwrap();
 
-    let events = engine.audit.events_for_fold("writable");
+    let events = engine.audit().events_for_fold("writable");
     assert!(!events.is_empty());
 }
 
@@ -105,7 +105,7 @@ fn multiple_operations_accumulate() {
             TrustDistancePolicy::new(10, 10),
         )],
     );
-    engine.registry.register_fold(fold).unwrap();
+    engine.register_fold(fold).unwrap();
 
     let ctx = AccessContext::owner("owner");
     engine.query("multi", &ctx);
@@ -115,7 +115,7 @@ fn multiple_operations_accumulate() {
         .unwrap();
     engine.query("multi", &ctx);
 
-    assert!(engine.audit.total_events() >= 4);
+    assert!(engine.audit().total_events() >= 4);
 }
 
 #[test]
@@ -132,9 +132,9 @@ fn events_filtered_by_user() {
             TrustDistancePolicy::new(10, 10),
         )],
     );
-    engine.registry.register_fold(fold).unwrap();
-    engine.trust_graph.assign_trust("owner", "alice", 1);
-    engine.trust_graph.assign_trust("owner", "bob", 2);
+    engine.register_fold(fold).unwrap();
+    engine.assign_trust("owner", "alice", 1);
+    engine.assign_trust("owner", "bob", 2);
 
     let alice_ctx = AccessContext::new("alice", 1);
     let bob_ctx = AccessContext::new("bob", 2);
@@ -143,8 +143,8 @@ fn events_filtered_by_user() {
     engine.query("shared", &bob_ctx);
     engine.query("shared", &alice_ctx);
 
-    let alice_events = engine.audit.events_for_user("alice");
-    let bob_events = engine.audit.events_for_user("bob");
+    let alice_events = engine.audit().events_for_user("alice");
+    let bob_events = engine.audit().events_for_user("bob");
     assert_eq!(alice_events.len(), 2);
     assert_eq!(bob_events.len(), 1);
 }

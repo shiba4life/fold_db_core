@@ -13,6 +13,9 @@ Fold DB is a database in which data is never accessed directly. Users interact w
 
 ```
 ┌─────────────────────────────────────────────┐
+│                 FoldDbApi                    │
+│  Unified entry point for all operations     │
+├─────────────────────────────────────────────┤
 │                 FoldEngine                   │
 │  Monadic evaluation: Fold[a] = C → Maybe a  │
 ├──────────┬──────────┬───────────┬───────────┤
@@ -24,6 +27,7 @@ Fold DB is a database in which data is never accessed directly. Users interact w
 
 | Module | Paper Section | What it does |
 |--------|:---:|---|
+| `api/` | — | Public API: serializable request/response types, history, rollback |
 | `types/` | §3.1 | Fold, Field, FieldValue, AccessContext, SecurityLabel, TrustDistancePolicy |
 | `access/trust.rs` | §4.1 | Additive trust distances, shortest-path resolution, overrides, revocation |
 | `access/capability.rs` | §4.2 | WX_k / RX_k capabilities with bounded quotas |
@@ -36,35 +40,52 @@ Fold DB is a database in which data is never accessed directly. Users interact w
 
 ## Usage
 
+`FoldDbApi` is the primary interface. All request/response types are serializable.
+
 ```rust
-use fold_db_core::{FoldEngine, AccessContext, Fold, Field, FieldValue, SecurityLabel, TrustDistancePolicy};
+use fold_db_core::api::*;
+use fold_db_core::types::{AccessContext, FieldValue, SecurityLabel, TrustDistancePolicy};
 
-let mut engine = FoldEngine::new();
+let mut api = FoldDbApi::new();
 
-// Create a fold with a field
-let fold = Fold::new("my_fold", "owner_alice", vec![
-    Field::new(
-        "email",
-        FieldValue::String("alice@example.com".to_string()),
-        SecurityLabel::new(2, "PII"),
-        TrustDistancePolicy::new(0, 1), // W0 R1: only owner writes, trust ≤ 1 reads
-    ),
-]);
-engine.registry.register_fold(fold).unwrap();
+// Create a fold
+api.create_fold(CreateFoldRequest {
+    fold_id: "my_fold".to_string(),
+    owner_id: "alice".to_string(),
+    fields: vec![FieldDef {
+        name: "email".to_string(),
+        value: FieldValue::String("alice@example.com".to_string()),
+        label: SecurityLabel::new(2, "PII"),
+        policy: TrustDistancePolicy::new(0, 1), // W0 R1
+        capabilities: vec![],
+        transform_id: None,
+        source_fold_id: None,
+        source_field_name: None,
+    }],
+    payment_gate: None,
+}).unwrap();
 
-// Owner assigns trust
-engine.trust_graph.assign_trust("owner_alice", "bob", 1);
+// Assign trust
+api.assign_trust("alice", "bob", 1);
 
 // Bob queries — gets the projection
-let ctx = AccessContext::new("bob", 1);
-let result = engine.query("my_fold", &ctx);
-assert!(result.is_some());
+let resp = api.query_fold(QueryRequest {
+    fold_id: "my_fold".to_string(),
+    context: AccessContext::new("bob", 1),
+});
+assert!(resp.fields.is_some());
 
 // Stranger queries — gets Nothing
-let ctx = AccessContext::new("stranger", 5);
-let result = engine.query("my_fold", &ctx);
-assert!(result.is_none());
+let resp = api.query_fold(QueryRequest {
+    fold_id: "my_fold".to_string(),
+    context: AccessContext::new("stranger", 5),
+});
+assert!(resp.fields.is_none());
 ```
+
+### Trust distance resolution
+
+When a trust graph entry exists for the caller, the engine automatically resolves their trust distance from the graph, overriding the value in `AccessContext.trust_distance`. This means the graph is the source of truth — the context field is only used as a fallback when no graph path exists.
 
 ## Build & Test
 

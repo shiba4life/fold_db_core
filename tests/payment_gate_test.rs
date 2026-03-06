@@ -26,8 +26,8 @@ fn make_paid_fold(gate: PaymentGate) -> FoldEngine {
     )
     .with_payment_gate(gate);
 
-    engine.registry.register_fold(fold).unwrap();
-    engine.trust_graph.assign_trust("owner", "user", 1);
+    engine.register_fold(fold).unwrap();
+    engine.assign_trust("owner", "user", 1);
     engine
 }
 
@@ -100,8 +100,8 @@ fn payment_required_for_writes_too() {
     )
     .with_payment_gate(PaymentGate::Fixed(5.0));
 
-    engine.registry.register_fold(fold).unwrap();
-    engine.trust_graph.assign_trust("owner", "writer", 1);
+    engine.register_fold(fold).unwrap();
+    engine.assign_trust("owner", "writer", 1);
 
     // Write without payment → denied
     let ctx = AccessContext::new("writer", 1);
@@ -143,8 +143,8 @@ fn no_payment_gate_means_free_access() {
     );
     // No payment gate
 
-    engine.registry.register_fold(fold).unwrap();
-    engine.trust_graph.assign_trust("owner", "user", 1);
+    engine.register_fold(fold).unwrap();
+    engine.assign_trust("owner", "user", 1);
 
     let ctx = AccessContext::new("user", 1);
     assert!(engine.query("free_fold", &ctx).is_some());

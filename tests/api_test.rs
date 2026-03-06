@@ -17,6 +17,7 @@ fn simple_field_def(name: &str, value: FieldValue) -> FieldDef {
         capabilities: vec![],
         transform_id: None,
         source_fold_id: None,
+            source_field_name: None,
     }
 }
 
@@ -182,6 +183,7 @@ fn trust_affects_query_access() {
             capabilities: vec![],
             transform_id: None,
             source_fold_id: None,
+            source_field_name: None,
         }],
         payment_gate: None,
     })
@@ -277,6 +279,7 @@ fn derived_fold_via_transform() {
             capabilities: vec![],
             transform_id: Some("double".to_string()),
             source_fold_id: Some("src".to_string()),
+            source_field_name: None,
         }],
         payment_gate: None,
     })
@@ -477,6 +480,7 @@ fn history_requires_read_access() {
             capabilities: vec![],
             transform_id: None,
             source_fold_id: None,
+            source_field_name: None,
         }],
         payment_gate: None,
     })
