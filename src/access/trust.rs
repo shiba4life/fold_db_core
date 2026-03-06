@@ -85,7 +85,7 @@ impl TrustGraph {
             // Find all edges from this node
             for ((from, to), &edge_cost) in &self.edges {
                 if from == &node {
-                    let next_cost = cost + edge_cost;
+                    let next_cost = cost.saturating_add(edge_cost);
                     if next_cost < *dist.get(to).unwrap_or(&u64::MAX) {
                         dist.insert(to.clone(), next_cost);
                         heap.push(Reverse((next_cost, to.clone())));
@@ -97,8 +97,12 @@ impl TrustGraph {
         None
     }
 
-    /// Revoke trust: set distance to a very large value effectively denying access.
+    /// Revoke trust: remove the edge and set an override to MAX, effectively
+    /// denying access to this user. Anyone whose only path flows through this
+    /// user also loses access.
     pub fn revoke(&mut self, owner: &str, user: &str) {
+        self.edges
+            .remove(&(owner.to_string(), user.to_string()));
         self.set_override(owner, user, u64::MAX);
     }
 }

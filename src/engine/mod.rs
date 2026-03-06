@@ -277,7 +277,7 @@ impl FoldEngine {
 
     /// Resolve trust distance from the trust graph if the context user
     /// isn't the owner and we have a graph entry.
-    fn resolve_trust_distance(&self, fold_id: &str, context: &AccessContext) -> AccessContext {
+    pub fn resolve_trust_distance(&self, fold_id: &str, context: &AccessContext) -> AccessContext {
         let mut ctx = context.clone();
 
         if let Some(fold) = self.registry.get_fold(fold_id)

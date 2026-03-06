@@ -3,6 +3,8 @@ name = "fold_db_core"
 version = "0.1.0"
 edition = "2024"
 description = "Core library implementing the Fold DB model: policy-enforcing interfaces over stored data"
+license = "MIT"
+repository = "https://github.com/shiba4life/fold_db_core"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
