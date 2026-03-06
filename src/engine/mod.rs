@@ -209,9 +209,13 @@ impl FoldEngine {
                 && let Some(inverse_value) = transform.apply_inverse(&value)
             {
                 let source_fold_id = source_fold_id.clone();
+                let source_field = field
+                    .source_field_name
+                    .as_deref()
+                    .unwrap_or(field_name);
                 return self.write(
                     &source_fold_id,
-                    field_name,
+                    source_field,
                     inverse_value,
                     &context,
                     signature,
