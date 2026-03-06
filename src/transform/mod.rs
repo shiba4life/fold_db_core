@@ -1,8 +1,12 @@
+pub mod expr;
+
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::types::FieldValue;
 use crate::types::SecurityLabel;
+
+pub use expr::TransformExpr;
 
 /// Transform reversibility classification (Section 3.3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -47,20 +51,94 @@ pub type TransformFn = Box<dyn Fn(&FieldValue) -> FieldValue + Send + Sync>;
 /// An inverse transform function (for reversible transforms).
 pub type InverseTransformFn = Box<dyn Fn(&FieldValue) -> FieldValue + Send + Sync>;
 
-/// A registered transform with its executable function.
+/// The implementation of a transform: either a closure (for internal/testing use)
+/// or a serializable expression (for registry-loaded, verifiable transforms).
+pub enum TransformImpl {
+    /// Closure-based implementation. Not serializable, not verifiable.
+    /// Use for testing or internal transforms only.
+    Closure {
+        forward: TransformFn,
+        inverse: Option<InverseTransformFn>,
+    },
+    /// Expression-based implementation. Fully serializable, content-addressed,
+    /// and verifiably non-malicious. Loaded from the registry.
+    Expression {
+        forward: TransformExpr,
+        inverse: Option<TransformExpr>,
+    },
+}
+
+/// A registered transform with its definition and implementation.
 pub struct RegisteredTransform {
     pub def: TransformDef,
-    pub forward: TransformFn,
-    pub inverse: Option<InverseTransformFn>,
+    pub implementation: TransformImpl,
 }
 
 impl RegisteredTransform {
+    /// Create a closure-based transform (for testing / internal use).
+    pub fn from_closure(
+        def: TransformDef,
+        forward: TransformFn,
+        inverse: Option<InverseTransformFn>,
+    ) -> Self {
+        Self {
+            def,
+            implementation: TransformImpl::Closure { forward, inverse },
+        }
+    }
+
+    /// Create an expression-based transform (verifiable, serializable).
+    pub fn from_expr(
+        def: TransformDef,
+        forward: TransformExpr,
+        inverse: Option<TransformExpr>,
+    ) -> Self {
+        Self {
+            def,
+            implementation: TransformImpl::Expression { forward, inverse },
+        }
+    }
+
     pub fn apply(&self, input: &FieldValue) -> FieldValue {
-        (self.forward)(input)
+        match &self.implementation {
+            TransformImpl::Closure { forward, .. } => forward(input),
+            TransformImpl::Expression { forward, .. } => forward.evaluate(input),
+        }
     }
 
     pub fn apply_inverse(&self, input: &FieldValue) -> Option<FieldValue> {
-        self.inverse.as_ref().map(|inv| inv(input))
+        match &self.implementation {
+            TransformImpl::Closure { inverse, .. } => {
+                inverse.as_ref().map(|inv| inv(input))
+            }
+            TransformImpl::Expression { inverse, .. } => {
+                inverse.as_ref().map(|inv| inv.evaluate(input))
+            }
+        }
+    }
+
+    /// Returns true if this transform has an inverse (closure or expression).
+    pub fn has_inverse(&self) -> bool {
+        match &self.implementation {
+            TransformImpl::Closure { inverse, .. } => inverse.is_some(),
+            TransformImpl::Expression { inverse, .. } => inverse.is_some(),
+        }
+    }
+
+    /// Returns the forward expression if this is an expression-based transform.
+    pub fn forward_expr(&self) -> Option<&TransformExpr> {
+        match &self.implementation {
+            TransformImpl::Expression { forward, .. } => Some(forward),
+            _ => None,
+        }
+    }
+
+    /// Returns the inverse expression if this is an expression-based transform.
+    pub fn inverse_expr(&self) -> Option<&TransformExpr> {
+        match &self.implementation {
+            TransformImpl::Expression { inverse, .. } => inverse.as_ref(),
+            _ => None,
+        }
     }
 }
 

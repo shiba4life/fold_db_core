@@ -55,8 +55,8 @@ fn cycle_detection_direct() {
     // A fold cannot derive from itself.
     let mut engine = FoldEngine::new();
 
-    let identity = RegisteredTransform {
-        def: TransformDef {
+    let identity = RegisteredTransform::from_closure(
+        TransformDef {
             id: "id".to_string(),
             name: "identity".to_string(),
             reversibility: Reversibility::Irreversible,
@@ -64,9 +64,9 @@ fn cycle_detection_direct() {
             input_type: "Integer".to_string(),
             output_type: "Integer".to_string(),
         },
-        forward: Box::new(|v| v.clone()),
-        inverse: None,
-    };
+        Box::new(|v| v.clone()),
+        None,
+    );
     engine.register_transform(identity).unwrap();
 
     let mut field = Field::new(
@@ -87,8 +87,8 @@ fn cycle_detection_indirect() {
     // A → B → C → A is a cycle and must be rejected when registering C.
     let mut engine = FoldEngine::new();
 
-    let identity = RegisteredTransform {
-        def: TransformDef {
+    let identity = RegisteredTransform::from_closure(
+        TransformDef {
             id: "id".to_string(),
             name: "identity".to_string(),
             reversibility: Reversibility::Irreversible,
@@ -96,9 +96,9 @@ fn cycle_detection_indirect() {
             input_type: "Integer".to_string(),
             output_type: "Integer".to_string(),
         },
-        forward: Box::new(|v| v.clone()),
-        inverse: None,
-    };
+        Box::new(|v| v.clone()),
+        None,
+    );
     engine.register_transform(identity).unwrap();
 
     // A: base fold
@@ -166,8 +166,8 @@ fn list_folds_returns_registered() {
 fn list_transforms_returns_registered() {
     let mut engine = FoldEngine::new();
 
-    let t = RegisteredTransform {
-        def: TransformDef {
+    let t = RegisteredTransform::from_closure(
+        TransformDef {
             id: "t1".to_string(),
             name: "transform_one".to_string(),
             reversibility: Reversibility::Irreversible,
@@ -175,9 +175,9 @@ fn list_transforms_returns_registered() {
             input_type: "String".to_string(),
             output_type: "String".to_string(),
         },
-        forward: Box::new(|v| v.clone()),
-        inverse: None,
-    };
+        Box::new(|v| v.clone()),
+        None,
+    );
     engine.register_transform(t).unwrap();
 
     let transforms = engine.registry().list_transforms();
@@ -191,8 +191,8 @@ fn label_violation_output_lower_than_input_rejected() {
     // Registering a derived field with a label lower than the source is rejected.
     let mut engine = FoldEngine::new();
 
-    let t = RegisteredTransform {
-        def: TransformDef {
+    let t = RegisteredTransform::from_closure(
+        TransformDef {
             id: "up".to_string(),
             name: "upper".to_string(),
             reversibility: Reversibility::Irreversible,
@@ -200,9 +200,9 @@ fn label_violation_output_lower_than_input_rejected() {
             input_type: "String".to_string(),
             output_type: "String".to_string(),
         },
-        forward: Box::new(|v| v.clone()),
-        inverse: None,
-    };
+        Box::new(|v| v.clone()),
+        None,
+    );
     engine.register_transform(t).unwrap();
 
     // Source at level 2
@@ -236,8 +236,8 @@ fn label_violation_output_lower_than_input_rejected() {
 fn label_equal_level_is_allowed() {
     let mut engine = FoldEngine::new();
 
-    let t = RegisteredTransform {
-        def: TransformDef {
+    let t = RegisteredTransform::from_closure(
+        TransformDef {
             id: "pass".to_string(),
             name: "passthrough".to_string(),
             reversibility: Reversibility::Irreversible,
@@ -245,9 +245,9 @@ fn label_equal_level_is_allowed() {
             input_type: "String".to_string(),
             output_type: "String".to_string(),
         },
-        forward: Box::new(|v| v.clone()),
-        inverse: None,
-    };
+        Box::new(|v| v.clone()),
+        None,
+    );
     engine.register_transform(t).unwrap();
 
     let source = Fold::new(

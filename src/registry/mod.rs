@@ -86,7 +86,7 @@ impl FoldRegistry {
 
         // Validate: irreversible transforms must not provide an inverse
         if transform.def.reversibility == crate::transform::Reversibility::Irreversible
-            && transform.inverse.is_some()
+            && transform.has_inverse()
         {
             return Err(RegistryError::InvalidTransform(
                 "irreversible transform must not provide an inverse".to_string(),
@@ -95,7 +95,7 @@ impl FoldRegistry {
 
         // Validate: reversible transforms must provide an inverse
         if transform.def.reversibility == crate::transform::Reversibility::Reversible
-            && transform.inverse.is_none()
+            && !transform.has_inverse()
         {
             return Err(RegistryError::InvalidTransform(
                 "reversible transform must provide an inverse".to_string(),

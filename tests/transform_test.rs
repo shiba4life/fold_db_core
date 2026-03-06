@@ -18,8 +18,8 @@ fn reversible_transform_write_propagates_inverse() {
     let mut engine = FoldEngine::new();
 
     // Register a reversible "celsius_to_fahrenheit" transform
-    let c_to_f = RegisteredTransform {
-        def: TransformDef {
+    let c_to_f = RegisteredTransform::from_closure(
+        TransformDef {
             id: "c_to_f".to_string(),
             name: "celsius_to_fahrenheit".to_string(),
             reversibility: Reversibility::Reversible,
@@ -27,15 +27,15 @@ fn reversible_transform_write_propagates_inverse() {
             input_type: "Float".to_string(),
             output_type: "Float".to_string(),
         },
-        forward: Box::new(|val| match val {
+        Box::new(|val| match val {
             FieldValue::Float(c) => FieldValue::Float(c * 9.0 / 5.0 + 32.0),
             other => other.clone(),
         }),
-        inverse: Some(Box::new(|val| match val {
+        Some(Box::new(|val| match val {
             FieldValue::Float(f) => FieldValue::Float((f - 32.0) * 5.0 / 9.0),
             other => other.clone(),
         })),
-    };
+    );
     engine.register_transform(c_to_f).unwrap();
 
     // Source fold: temperature in Celsius
@@ -95,8 +95,8 @@ fn reversible_transform_write_propagates_inverse() {
 fn irreversible_transform_rejects_writes() {
     let mut engine = FoldEngine::new();
 
-    let hash_transform = RegisteredTransform {
-        def: TransformDef {
+    let hash_transform = RegisteredTransform::from_closure(
+        TransformDef {
             id: "hash".to_string(),
             name: "sha256".to_string(),
             reversibility: Reversibility::Irreversible,
@@ -104,12 +104,12 @@ fn irreversible_transform_rejects_writes() {
             input_type: "String".to_string(),
             output_type: "String".to_string(),
         },
-        forward: Box::new(|val| match val {
+        Box::new(|val| match val {
             FieldValue::String(s) => FieldValue::String(format!("hash({s})")),
             other => other.clone(),
         }),
-        inverse: None,
-    };
+        None,
+    );
     engine.register_transform(hash_transform).unwrap();
 
     let source = Fold::new(
@@ -160,8 +160,8 @@ fn irreversible_transform_with_inverse_rejected_at_registration() {
     // §8.1: A transform that claims irreversibility but provides an inverse is rejected.
     let mut engine = FoldEngine::new();
 
-    let bad_transform = RegisteredTransform {
-        def: TransformDef {
+    let bad_transform = RegisteredTransform::from_closure(
+        TransformDef {
             id: "bad".to_string(),
             name: "bad".to_string(),
             reversibility: Reversibility::Irreversible,
@@ -169,9 +169,9 @@ fn irreversible_transform_with_inverse_rejected_at_registration() {
             input_type: "String".to_string(),
             output_type: "String".to_string(),
         },
-        forward: Box::new(|v| v.clone()),
-        inverse: Some(Box::new(|v| v.clone())), // invalid!
-    };
+        Box::new(|v| v.clone()),
+        Some(Box::new(|v| v.clone())), // invalid!
+    );
 
     let result = engine.register_transform(bad_transform);
     assert!(result.is_err());
@@ -181,8 +181,8 @@ fn irreversible_transform_with_inverse_rejected_at_registration() {
 fn reversible_transform_without_inverse_rejected_at_registration() {
     let mut engine = FoldEngine::new();
 
-    let bad_transform = RegisteredTransform {
-        def: TransformDef {
+    let bad_transform = RegisteredTransform::from_closure(
+        TransformDef {
             id: "bad2".to_string(),
             name: "bad2".to_string(),
             reversibility: Reversibility::Reversible,
@@ -190,9 +190,9 @@ fn reversible_transform_without_inverse_rejected_at_registration() {
             input_type: "String".to_string(),
             output_type: "String".to_string(),
         },
-        forward: Box::new(|v| v.clone()),
-        inverse: None, // must provide inverse for reversible!
-    };
+        Box::new(|v| v.clone()),
+        None, // must provide inverse for reversible!
+    );
 
     let result = engine.register_transform(bad_transform);
     assert!(result.is_err());
@@ -203,8 +203,8 @@ fn transform_determinism_same_input_same_output() {
     // §8.1: a transform is a pure function — same input always yields same output.
     let mut engine = FoldEngine::new();
 
-    let upper = RegisteredTransform {
-        def: TransformDef {
+    let upper = RegisteredTransform::from_closure(
+        TransformDef {
             id: "upper".to_string(),
             name: "uppercase".to_string(),
             reversibility: Reversibility::Irreversible,
@@ -212,12 +212,12 @@ fn transform_determinism_same_input_same_output() {
             input_type: "String".to_string(),
             output_type: "String".to_string(),
         },
-        forward: Box::new(|val| match val {
+        Box::new(|val| match val {
             FieldValue::String(s) => FieldValue::String(s.to_uppercase()),
             other => other.clone(),
         }),
-        inverse: None,
-    };
+        None,
+    );
     engine.register_transform(upper).unwrap();
 
     let source = Fold::new(

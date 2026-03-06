@@ -29,8 +29,8 @@ fn setup_hospital_engine() -> FoldEngine {
     engine.assign_trust(patient_id, "researcher_bob", 3); // external researcher
 
     // Register the irreversible hash transform
-    let hash_transform = RegisteredTransform {
-        def: TransformDef {
+    let hash_transform = RegisteredTransform::from_closure(
+        TransformDef {
             id: "hash_name".to_string(),
             name: "irreversible_hash".to_string(),
             reversibility: Reversibility::Irreversible,
@@ -38,7 +38,7 @@ fn setup_hospital_engine() -> FoldEngine {
             input_type: "String".to_string(),
             output_type: "String".to_string(),
         },
-        forward: Box::new(|val| match val {
+        Box::new(|val| match val {
             FieldValue::String(s) => {
                 use sha2::{Digest, Sha256};
                 let hash = Sha256::digest(s.as_bytes());
@@ -46,8 +46,8 @@ fn setup_hospital_engine() -> FoldEngine {
             }
             other => other.clone(),
         }),
-        inverse: None, // irreversible
-    };
+        None, // irreversible
+    );
     engine.register_transform(hash_transform).unwrap();
 
     // Fold 1: Clinical access (F_clin) — W1 R1

@@ -12,7 +12,9 @@ use crate::access::PaymentGate;
 use crate::audit::AuditEvent;
 use crate::engine::{FoldEngine, WriteError};
 use crate::store::StoreEntry;
-use crate::transform::{InverseTransformFn, RegisteredTransform, TransformDef, TransformFn};
+use crate::transform::{
+    InverseTransformFn, RegisteredTransform, TransformDef, TransformExpr, TransformFn,
+};
 use crate::types::{
     AccessContext, CapabilityConstraint, Field, FieldValue, Fold, SecurityLabel,
     TrustDistancePolicy,
@@ -201,17 +203,29 @@ impl FoldDbApi {
 
     // ── Transform operations ────────────────────────────────────────
 
+    /// Register a closure-based transform (for internal/testing use).
+    /// Closures are not serializable or verifiable — prefer `register_transform_expr`.
     pub fn register_transform(
         &mut self,
         def: TransformDef,
         forward: TransformFn,
         inverse: Option<InverseTransformFn>,
     ) -> Result<String, ApiError> {
-        let transform = RegisteredTransform {
-            def,
-            forward,
-            inverse,
-        };
+        let transform = RegisteredTransform::from_closure(def, forward, inverse);
+        let id = self.engine.registry.register_transform(transform)?;
+        Ok(id)
+    }
+
+    /// Register an expression-based transform (recommended).
+    /// Expressions are serializable, content-addressed, and verifiably non-malicious.
+    /// This is the primary way to register transforms from external sources.
+    pub fn register_transform_expr(
+        &mut self,
+        def: TransformDef,
+        forward: TransformExpr,
+        inverse: Option<TransformExpr>,
+    ) -> Result<String, ApiError> {
+        let transform = RegisteredTransform::from_expr(def, forward, inverse);
         let id = self.engine.registry.register_transform(transform)?;
         Ok(id)
     }

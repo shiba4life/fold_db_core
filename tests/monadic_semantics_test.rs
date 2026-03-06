@@ -112,8 +112,8 @@ fn three_level_fold_composition() {
     let mut engine = FoldEngine::new();
 
     // Register transforms
-    let double = RegisteredTransform {
-        def: TransformDef {
+    let double = RegisteredTransform::from_closure(
+        TransformDef {
             id: "double".to_string(),
             name: "double".to_string(),
             reversibility: Reversibility::Irreversible,
@@ -121,16 +121,16 @@ fn three_level_fold_composition() {
             input_type: "Integer".to_string(),
             output_type: "Integer".to_string(),
         },
-        forward: Box::new(|val| match val {
+        Box::new(|val| match val {
             FieldValue::Integer(n) => FieldValue::Integer(n * 2),
             other => other.clone(),
         }),
-        inverse: None,
-    };
+        None,
+    );
     engine.register_transform(double).unwrap();
 
-    let negate = RegisteredTransform {
-        def: TransformDef {
+    let negate = RegisteredTransform::from_closure(
+        TransformDef {
             id: "negate".to_string(),
             name: "negate".to_string(),
             reversibility: Reversibility::Irreversible,
@@ -138,12 +138,12 @@ fn three_level_fold_composition() {
             input_type: "Integer".to_string(),
             output_type: "Integer".to_string(),
         },
-        forward: Box::new(|val| match val {
+        Box::new(|val| match val {
             FieldValue::Integer(n) => FieldValue::Integer(-n),
             other => other.clone(),
         }),
-        inverse: None,
-    };
+        None,
+    );
     engine.register_transform(negate).unwrap();
 
     // F1: base fold with value=5
