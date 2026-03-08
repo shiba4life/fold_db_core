@@ -1,6 +1,10 @@
 # fold_db_core
 
-Core Rust library implementing the formal model from [Fold DB: Compute Without Exposure](https://folddb.com/papers/fold_db_paper.pdf).
+An experimental minimal reimplementation of the FoldDB core database engine, built from the formal model in [Fold DB: Compute Without Exposure](https://folddb.com/papers/fold_db_paper.pdf).
+
+This is a ground-up rewrite exploring whether the core database can be implemented more minimally. The original [fold_db](https://github.com/shiba4life/fold_db) monolith was split into:
+- **fold_db_core** (this repo) — experimental minimal core database engine
+- [**fold_db_node**](https://github.com/shiba4life/fold_db_node) — the application/node layer (server, HTTP, agents, UI)
 
 Fold DB is a database in which data is never accessed directly. Users interact with **folds** — named interfaces that sit in front of stored values and enforce access policies on every operation. Each fold defines which fields are visible, what transformations are applied, and who may read or write, using four conjunctive mechanisms:
 
