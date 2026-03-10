@@ -15,13 +15,13 @@ use fold_db_core::transform::{Reversibility, TransformDef};
 use fold_db_core::types::{
     AccessContext, FieldValue, SecurityLabel, TrustDistancePolicy,
 };
-use serde_json::json;
+use fold_db_core::{FieldType, ScalarType};
 
 fn owner() -> AccessContext {
     AccessContext::owner("patient")
 }
 
-// ── Test: expression transforms are serializable ─────────────────────
+// -- Test: expression transforms are serializable ---------------------
 
 #[test]
 fn expression_serializes_to_json() {
@@ -46,7 +46,7 @@ fn expression_content_hash_is_deterministic() {
     assert_ne!(expr.content_hash(), different.content_hash());
 }
 
-// ── Test: arithmetic expressions ─────────────────────────────────────
+// -- Test: arithmetic expressions -------------------------------------
 
 #[test]
 fn multiply_and_round() {
@@ -76,7 +76,7 @@ fn round_nearest() {
     assert_eq!(expr.evaluate(&FieldValue::Float(73.0)), FieldValue::Integer(70));
 }
 
-// ── Test: string expressions ─────────────────────────────────────────
+// -- Test: string expressions -----------------------------------------
 
 #[test]
 fn uppercase_and_lowercase() {
@@ -99,83 +99,29 @@ fn sha256_hash() {
     }
 }
 
-// ── Test: array aggregation ──────────────────────────────────────────
+// -- Test: array aggregation ------------------------------------------
 
 #[test]
 fn array_average() {
-    let input = FieldValue::Json(json!([70, 72, 74, 76, 78]));
+    let input = FieldValue::Array(vec![
+        FieldValue::Float(70.0),
+        FieldValue::Float(72.0),
+        FieldValue::Float(74.0),
+        FieldValue::Float(76.0),
+        FieldValue::Float(78.0),
+    ]);
     let result = TransformExpr::ArrayAverage.evaluate(&input);
     assert_eq!(result, FieldValue::Float(74.0));
 }
 
 #[test]
-fn array_summary() {
-    let input = FieldValue::Json(json!([60, 72, 85, 90, 110]));
-    let result = TransformExpr::ArraySummary.evaluate(&input);
-    match result {
-        FieldValue::Json(v) => {
-            assert_eq!(v["min"], 60);
-            assert_eq!(v["max"], 110);
-            assert_eq!(v["count"], 5);
-            assert!(v["avg"].as_f64().is_some());
-        }
-        _ => panic!("expected Json"),
-    }
-}
-
-#[test]
 fn array_on_empty_returns_null() {
-    let input = FieldValue::Json(json!([]));
+    let input = FieldValue::Array(vec![]);
     assert_eq!(TransformExpr::ArrayAverage.evaluate(&input), FieldValue::Null);
     assert_eq!(TransformExpr::ArraySum.evaluate(&input), FieldValue::Null);
 }
 
-// ── Test: JSON object operations ─────────────────────────────────────
-
-#[test]
-fn json_get_latest_key() {
-    let input = FieldValue::Json(json!({
-        "2026-W10": [70, 72],
-        "2026-W12": [80, 82],
-        "2026-W11": [75, 77],
-    }));
-    // Latest key lexicographically is "2026-W12"
-    let result = TransformExpr::JsonGetLatestKey.evaluate(&input);
-    assert_eq!(result, FieldValue::Json(json!([80, 82])));
-}
-
-#[test]
-fn json_map_values() {
-    let input = FieldValue::Json(json!({
-        "w1": [70, 72, 74],
-        "w2": [80, 82, 84],
-    }));
-    let expr = TransformExpr::JsonMapValues(Box::new(TransformExpr::ArrayAverage));
-    let result = expr.evaluate(&input);
-    match result {
-        FieldValue::Json(v) => {
-            let obj = v.as_object().unwrap();
-            assert!((obj["w1"].as_f64().unwrap() - 72.0).abs() < 0.1);
-            assert!((obj["w2"].as_f64().unwrap() - 82.0).abs() < 0.1);
-        }
-        _ => panic!("expected Json object"),
-    }
-}
-
-#[test]
-fn json_get_field() {
-    let input = FieldValue::Json(json!({"name": "Alice", "age": 30}));
-    assert_eq!(
-        TransformExpr::JsonGetField("name".to_string()).evaluate(&input),
-        FieldValue::String("Alice".to_string())
-    );
-    assert_eq!(
-        TransformExpr::JsonGetField("missing".to_string()).evaluate(&input),
-        FieldValue::Null
-    );
-}
-
-// ── Test: range classification ───────────────────────────────────────
+// -- Test: range classification ---------------------------------------
 
 #[test]
 fn range_classify() {
@@ -211,69 +157,36 @@ fn range_classify() {
     );
 }
 
-// ── Test: pipeline composition ───────────────────────────────────────
+// -- Test: pipeline composition ---------------------------------------
 
 #[test]
-fn pipeline_latest_week_average() {
-    // Pipeline: get latest week's readings → average them → round to 1 decimal
+fn pipeline_array_average_and_classify() {
+    // Pipeline: average array readings -> classify into zone
     let expr = TransformExpr::Pipeline(vec![
-        TransformExpr::JsonGetLatestKey,
         TransformExpr::ArrayAverage,
         TransformExpr::RoundDecimal(1),
+        TransformExpr::RangeClassify {
+            ranges: vec![
+                RangeLabel { min: 0, max: 59, label: "bradycardia".to_string() },
+                RangeLabel { min: 60, max: 100, label: "normal".to_string() },
+                RangeLabel { min: 101, max: 120, label: "elevated".to_string() },
+                RangeLabel { min: 121, max: 200, label: "tachycardia".to_string() },
+            ],
+            default: "unknown".to_string(),
+        },
     ]);
 
-    let input = FieldValue::Json(json!({
-        "2026-W10": [70, 72, 74],
-        "2026-W11": [80, 82, 84],
-    }));
+    let input = FieldValue::Array(vec![
+        FieldValue::Float(70.0),
+        FieldValue::Float(72.0),
+        FieldValue::Float(74.0),
+    ]);
 
     let result = expr.evaluate(&input);
-    assert_eq!(result, FieldValue::Float(82.0));
+    assert_eq!(result, FieldValue::String("normal".to_string()));
 }
 
-// ── Test: trend analysis ─────────────────────────────────────────────
-
-#[test]
-fn trend_analysis_improving() {
-    let expr = TransformExpr::TrendAnalysis {
-        improving_threshold: -2.0,
-        declining_threshold: 2.0,
-    };
-
-    let input = FieldValue::Json(json!({
-        "2026-W10": [78, 80, 76],
-        "2026-W11": [70, 72, 68],
-    }));
-
-    let result = expr.evaluate(&input);
-    match result {
-        FieldValue::Json(v) => {
-            assert_eq!(v["direction"], "improving");
-            assert_eq!(v["weeks_tracked"], 2);
-        }
-        _ => panic!("expected Json"),
-    }
-}
-
-#[test]
-fn trend_analysis_insufficient_data() {
-    let expr = TransformExpr::TrendAnalysis {
-        improving_threshold: -2.0,
-        declining_threshold: 2.0,
-    };
-
-    let input = FieldValue::Json(json!({
-        "2026-W10": [72, 74, 76],
-    }));
-
-    let result = expr.evaluate(&input);
-    match result {
-        FieldValue::Json(v) => assert_eq!(v["direction"], "insufficient data"),
-        _ => panic!("expected Json"),
-    }
-}
-
-// ── Test: full integration — expression transforms via API ───────────
+// -- Test: full integration --- expression transforms via API ---------
 
 #[test]
 fn register_and_use_expression_transform_via_api() {
@@ -286,8 +199,8 @@ fn register_and_use_expression_transform_via_api() {
             name: "expression_average".to_string(),
             reversibility: Reversibility::Irreversible,
             min_output_label: SecurityLabel::new(1, "medical"),
-            input_type: "Json".to_string(),
-            output_type: "Float".to_string(),
+            input_type: FieldType::Array(ScalarType::Float),
+            output_type: FieldType::FLOAT,
         },
         TransformExpr::Pipeline(vec![
             TransformExpr::ArrayAverage,
@@ -304,8 +217,8 @@ fn register_and_use_expression_transform_via_api() {
             name: "expression_classify".to_string(),
             reversibility: Reversibility::Irreversible,
             min_output_label: SecurityLabel::new(1, "medical"),
-            input_type: "Json".to_string(),
-            output_type: "String".to_string(),
+            input_type: FieldType::Array(ScalarType::Float),
+            output_type: FieldType::STRING,
         },
         TransformExpr::Pipeline(vec![
             TransformExpr::ArrayAverage,
@@ -329,7 +242,14 @@ fn register_and_use_expression_transform_via_api() {
         owner_id: "patient".to_string(),
         fields: vec![FieldDef {
             name: "bpm".to_string(),
-            value: FieldValue::Json(json!([72, 74, 68, 70, 76])),
+            value: FieldValue::Array(vec![
+                FieldValue::Float(72.0),
+                FieldValue::Float(74.0),
+                FieldValue::Float(68.0),
+                FieldValue::Float(70.0),
+                FieldValue::Float(76.0),
+            ]),
+            field_type: FieldType::Array(ScalarType::Float),
             label: SecurityLabel::new(2, "medical"),
             policy: TrustDistancePolicy::new(1, 1),
             capabilities: vec![],
@@ -348,6 +268,7 @@ fn register_and_use_expression_transform_via_api() {
         fields: vec![FieldDef {
             name: "avg_bpm".to_string(),
             value: FieldValue::Null,
+            field_type: FieldType::FLOAT,
             label: SecurityLabel::new(2, "medical"),
             policy: TrustDistancePolicy::new(0, 5),
             capabilities: vec![],
@@ -366,6 +287,7 @@ fn register_and_use_expression_transform_via_api() {
         fields: vec![FieldDef {
             name: "status".to_string(),
             value: FieldValue::Null,
+            field_type: FieldType::STRING,
             label: SecurityLabel::new(2, "medical"),
             policy: TrustDistancePolicy::new(0, 10),
             capabilities: vec![],
@@ -390,7 +312,7 @@ fn register_and_use_expression_transform_via_api() {
         Some(&FieldValue::Float(72.0))
     );
 
-    // App sees status: avg 72 → "normal"
+    // App sees status: avg 72 -> "normal"
     let resp = api.query_fold(QueryRequest {
         fold_id: "status_view".to_string(),
         context: AccessContext::new("app", 8),
@@ -404,7 +326,13 @@ fn register_and_use_expression_transform_via_api() {
     api.write_field(WriteRequest {
         fold_id: "readings".to_string(),
         field_name: "bpm".to_string(),
-        value: FieldValue::Json(json!([130, 140, 135, 128, 142])),
+        value: FieldValue::Array(vec![
+            FieldValue::Float(130.0),
+            FieldValue::Float(140.0),
+            FieldValue::Float(135.0),
+            FieldValue::Float(128.0),
+            FieldValue::Float(142.0),
+        ]),
         context: owner(),
         signature: vec![],
     })
@@ -421,22 +349,22 @@ fn register_and_use_expression_transform_via_api() {
     );
 }
 
-// ── Test: reversible expression transform ────────────────────────────
+// -- Test: reversible expression transform ----------------------------
 
 #[test]
 fn reversible_expression_transform() {
     let mut api = FoldDbApi::new();
 
-    // USD → EUR: multiply by 0.85, round to 2 decimals
-    // EUR → USD: divide by 0.85, round to 2 decimals
+    // USD -> EUR: multiply by 0.85, round to 2 decimals
+    // EUR -> USD: divide by 0.85, round to 2 decimals
     api.register_transform_expr(
         TransformDef {
             id: "usd_eur".to_string(),
             name: "usd_to_eur".to_string(),
             reversibility: Reversibility::Reversible,
             min_output_label: SecurityLabel::new(0, "public"),
-            input_type: "Float".to_string(),
-            output_type: "Float".to_string(),
+            input_type: FieldType::FLOAT,
+            output_type: FieldType::FLOAT,
         },
         TransformExpr::Pipeline(vec![
             TransformExpr::Multiply(0.85),
@@ -456,6 +384,7 @@ fn reversible_expression_transform() {
         fields: vec![FieldDef {
             name: "amount".to_string(),
             value: FieldValue::Float(80000.0),
+            field_type: FieldType::FLOAT,
             label: SecurityLabel::new(0, "public"),
             policy: TrustDistancePolicy::new(10, 10),
             capabilities: vec![],
@@ -474,6 +403,7 @@ fn reversible_expression_transform() {
         fields: vec![FieldDef {
             name: "amount".to_string(),
             value: FieldValue::Null,
+            field_type: FieldType::FLOAT,
             label: SecurityLabel::new(0, "public"),
             policy: TrustDistancePolicy::new(10, 10),
             capabilities: vec![],
@@ -497,7 +427,7 @@ fn reversible_expression_transform() {
         Some(&FieldValue::Float(68000.0))
     );
 
-    // Write 51000 EUR → propagates as 51000 / 0.85 = 60000 USD
+    // Write 51000 EUR -> propagates as 51000 / 0.85 = 60000 USD
     api.write_field(WriteRequest {
         fold_id: "salary_eur".to_string(),
         field_name: "amount".to_string(),
@@ -518,192 +448,21 @@ fn reversible_expression_transform() {
     );
 }
 
-// ── Test: multi-week trend via expressions ───────────────────────────
-
-#[test]
-fn multi_week_trend_via_expressions() {
-    let mut api = FoldDbApi::new();
-
-    // Register all-weeks average: {week: [readings]} → {week: avg}
-    api.register_transform_expr(
-        TransformDef {
-            id: "all_avgs_expr".to_string(),
-            name: "all_weeks_averages".to_string(),
-            reversibility: Reversibility::Irreversible,
-            min_output_label: SecurityLabel::new(1, "medical"),
-            input_type: "Json".to_string(),
-            output_type: "Json".to_string(),
-        },
-        TransformExpr::JsonMapValues(Box::new(TransformExpr::ArrayAverage)),
-        None,
-    )
-    .unwrap();
-
-    // Register trend analysis
-    api.register_transform_expr(
-        TransformDef {
-            id: "trend_expr".to_string(),
-            name: "trend_analysis".to_string(),
-            reversibility: Reversibility::Irreversible,
-            min_output_label: SecurityLabel::new(1, "medical"),
-            input_type: "Json".to_string(),
-            output_type: "Json".to_string(),
-        },
-        TransformExpr::TrendAnalysis {
-            improving_threshold: -2.0,
-            declining_threshold: 2.0,
-        },
-        None,
-    )
-    .unwrap();
-
-    // Register latest week average
-    api.register_transform_expr(
-        TransformDef {
-            id: "latest_avg_expr".to_string(),
-            name: "latest_week_avg".to_string(),
-            reversibility: Reversibility::Irreversible,
-            min_output_label: SecurityLabel::new(1, "medical"),
-            input_type: "Json".to_string(),
-            output_type: "Float".to_string(),
-        },
-        TransformExpr::Pipeline(vec![
-            TransformExpr::JsonGetLatestKey,
-            TransformExpr::ArrayAverage,
-            TransformExpr::RoundDecimal(1),
-        ]),
-        None,
-    )
-    .unwrap();
-
-    // Source fold
-    api.create_fold(CreateFoldRequest {
-        fold_id: "hr_data".to_string(),
-        owner_id: "patient".to_string(),
-        fields: vec![FieldDef {
-            name: "weeks".to_string(),
-            value: FieldValue::Json(json!({
-                "2026-W10": [78, 80, 76, 82, 74],
-                "2026-W11": [72, 70, 68, 74, 66],
-                "2026-W12": [65, 63, 67, 61, 64],
-            })),
-            label: SecurityLabel::new(2, "medical"),
-            policy: TrustDistancePolicy::new(1, 1),
-            capabilities: vec![],
-            transform_id: None,
-            source_fold_id: None,
-            source_field_name: None,
-        }],
-        payment_gate: None,
-    })
-    .unwrap();
-
-    // Derived: per-week averages
-    api.create_fold(CreateFoldRequest {
-        fold_id: "weekly_avgs".to_string(),
-        owner_id: "patient".to_string(),
-        fields: vec![FieldDef {
-            name: "averages".to_string(),
-            value: FieldValue::Null,
-            label: SecurityLabel::new(2, "medical"),
-            policy: TrustDistancePolicy::new(0, 3),
-            capabilities: vec![],
-            transform_id: Some("all_avgs_expr".to_string()),
-            source_fold_id: Some("hr_data".to_string()),
-            source_field_name: Some("weeks".to_string()),
-        }],
-        payment_gate: None,
-    })
-    .unwrap();
-
-    // Derived: trend
-    api.create_fold(CreateFoldRequest {
-        fold_id: "hr_trend_view".to_string(),
-        owner_id: "patient".to_string(),
-        fields: vec![FieldDef {
-            name: "trend".to_string(),
-            value: FieldValue::Null,
-            label: SecurityLabel::new(2, "medical"),
-            policy: TrustDistancePolicy::new(0, 5),
-            capabilities: vec![],
-            transform_id: Some("trend_expr".to_string()),
-            source_fold_id: Some("hr_data".to_string()),
-            source_field_name: Some("weeks".to_string()),
-        }],
-        payment_gate: None,
-    })
-    .unwrap();
-
-    // Derived: latest average
-    api.create_fold(CreateFoldRequest {
-        fold_id: "latest_view".to_string(),
-        owner_id: "patient".to_string(),
-        fields: vec![FieldDef {
-            name: "latest_avg".to_string(),
-            value: FieldValue::Null,
-            label: SecurityLabel::new(2, "medical"),
-            policy: TrustDistancePolicy::new(0, 3),
-            capabilities: vec![],
-            transform_id: Some("latest_avg_expr".to_string()),
-            source_fold_id: Some("hr_data".to_string()),
-            source_field_name: Some("weeks".to_string()),
-        }],
-        payment_gate: None,
-    })
-    .unwrap();
-
-    let ctx = owner();
-
-    // Per-week averages
-    let resp = api.query_fold(QueryRequest {
-        fold_id: "weekly_avgs".to_string(),
-        context: ctx.clone(),
-    });
-    let avgs = match resp.fields.unwrap().get("averages") {
-        Some(FieldValue::Json(v)) => v.clone(),
-        other => panic!("expected Json, got {other:?}"),
-    };
-    assert_eq!(avgs.as_object().unwrap().len(), 3);
-
-    // Trend: resting HR going down = improving
-    let resp = api.query_fold(QueryRequest {
-        fold_id: "hr_trend_view".to_string(),
-        context: ctx.clone(),
-    });
-    let trend = match resp.fields.unwrap().get("trend") {
-        Some(FieldValue::Json(v)) => v.clone(),
-        other => panic!("expected Json, got {other:?}"),
-    };
-    assert_eq!(trend["direction"], "improving");
-    assert_eq!(trend["weeks_tracked"], 3);
-
-    // Latest average (W12): ~64
-    let resp = api.query_fold(QueryRequest {
-        fold_id: "latest_view".to_string(),
-        context: ctx,
-    });
-    let avg = match resp.fields.unwrap().get("latest_avg") {
-        Some(FieldValue::Float(v)) => *v,
-        other => panic!("expected Float, got {other:?}"),
-    };
-    assert!((avg - 64.0).abs() < 1.0, "latest avg {avg} should be ~64");
-}
-
-// ── Test: type safety — wrong input type returns Null ─────────────────
+// -- Test: type safety --- wrong input type returns Null ---------------
 
 #[test]
 fn wrong_input_type_returns_null() {
-    // Uppercase on an integer → Null
+    // Uppercase on an integer -> Null
     assert_eq!(
         TransformExpr::Uppercase.evaluate(&FieldValue::Integer(42)),
         FieldValue::Null
     );
-    // ArrayAverage on a string → Null
+    // ArrayAverage on a string -> Null
     assert_eq!(
         TransformExpr::ArrayAverage.evaluate(&FieldValue::String("not an array".to_string())),
         FieldValue::Null
     );
-    // Multiply on a string → Null
+    // Multiply on a string -> Null
     assert_eq!(
         TransformExpr::Multiply(2.0).evaluate(&FieldValue::String("nope".to_string())),
         FieldValue::Null

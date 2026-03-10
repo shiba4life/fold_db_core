@@ -8,7 +8,7 @@
 use fold_db_core::access::PaymentGate;
 use fold_db_core::engine::FoldEngine;
 use fold_db_core::types::{
-    AccessContext, Field, FieldValue, Fold, SecurityLabel, TrustDistancePolicy,
+    AccessContext, Field, FieldType, FieldValue, Fold, SecurityLabel, TrustDistancePolicy,
 };
 
 fn make_paid_fold(gate: PaymentGate) -> FoldEngine {
@@ -20,6 +20,7 @@ fn make_paid_fold(gate: PaymentGate) -> FoldEngine {
         vec![Field::new(
             "data",
             FieldValue::String("premium content".to_string()),
+            FieldType::STRING,
             SecurityLabel::new(1, "normal"),
             TrustDistancePolicy::new(0, 10),
         )],
@@ -94,6 +95,7 @@ fn payment_required_for_writes_too() {
         vec![Field::new(
             "data",
             FieldValue::String("original".to_string()),
+            FieldType::STRING,
             SecurityLabel::new(1, "normal"),
             TrustDistancePolicy::new(10, 10),
         )],
@@ -137,6 +139,7 @@ fn no_payment_gate_means_free_access() {
         vec![Field::new(
             "data",
             FieldValue::String("free content".to_string()),
+            FieldType::STRING,
             SecurityLabel::new(1, "normal"),
             TrustDistancePolicy::new(0, 10),
         )],

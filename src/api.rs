@@ -16,7 +16,7 @@ use crate::transform::{
     InverseTransformFn, RegisteredTransform, TransformDef, TransformExpr, TransformFn,
 };
 use crate::types::{
-    AccessContext, CapabilityConstraint, Field, FieldValue, Fold, SecurityLabel,
+    AccessContext, CapabilityConstraint, Field, FieldType, FieldValue, Fold, SecurityLabel,
     TrustDistancePolicy,
 };
 
@@ -34,6 +34,8 @@ pub struct CreateFoldRequest {
 pub struct FieldDef {
     pub name: String,
     pub value: FieldValue,
+    /// The declared type of this field. Values must conform to this type.
+    pub field_type: FieldType,
     pub label: SecurityLabel,
     pub policy: TrustDistancePolicy,
     #[serde(default)]
@@ -144,7 +146,7 @@ impl FoldDbApi {
 
     pub fn create_fold(&mut self, req: CreateFoldRequest) -> Result<String, ApiError> {
         let fields: Vec<Field> = req.fields.into_iter().map(|fd| {
-            let mut f = Field::new(fd.name, fd.value, fd.label, fd.policy);
+            let mut f = Field::new(fd.name, fd.value, fd.field_type, fd.label, fd.policy);
             f.capabilities = fd.capabilities;
             f.transform_id = fd.transform_id;
             f.source_fold_id = fd.source_fold_id;

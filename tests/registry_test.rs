@@ -7,7 +7,7 @@
 
 use fold_db_core::engine::FoldEngine;
 use fold_db_core::transform::{RegisteredTransform, Reversibility, TransformDef};
-use fold_db_core::types::{Field, FieldValue, Fold, SecurityLabel, TrustDistancePolicy};
+use fold_db_core::types::{Field, FieldType, FieldValue, Fold, SecurityLabel, TrustDistancePolicy};
 
 #[test]
 fn duplicate_fold_id_rejected() {
@@ -30,6 +30,7 @@ fn missing_transform_reference_rejected() {
         vec![Field::new(
             "val",
             FieldValue::Integer(1),
+            FieldType::INTEGER,
             SecurityLabel::new(0, "public"),
             TrustDistancePolicy::new(10, 10),
         )],
@@ -40,6 +41,7 @@ fn missing_transform_reference_rejected() {
     let mut derived_field = Field::new(
         "val",
         FieldValue::Null,
+        FieldType::INTEGER,
         SecurityLabel::new(0, "public"),
         TrustDistancePolicy::new(10, 10),
     );
@@ -61,8 +63,8 @@ fn cycle_detection_direct() {
             name: "identity".to_string(),
             reversibility: Reversibility::Irreversible,
             min_output_label: SecurityLabel::new(0, "public"),
-            input_type: "Integer".to_string(),
-            output_type: "Integer".to_string(),
+            input_type: FieldType::INTEGER,
+            output_type: FieldType::INTEGER,
         },
         Box::new(|v| v.clone()),
         None,
@@ -72,6 +74,7 @@ fn cycle_detection_direct() {
     let mut field = Field::new(
         "val",
         FieldValue::Null,
+        FieldType::INTEGER,
         SecurityLabel::new(0, "public"),
         TrustDistancePolicy::new(10, 10),
     );
@@ -93,8 +96,8 @@ fn cycle_detection_indirect() {
             name: "identity".to_string(),
             reversibility: Reversibility::Irreversible,
             min_output_label: SecurityLabel::new(0, "public"),
-            input_type: "Integer".to_string(),
-            output_type: "Integer".to_string(),
+            input_type: FieldType::INTEGER,
+            output_type: FieldType::INTEGER,
         },
         Box::new(|v| v.clone()),
         None,
@@ -108,6 +111,7 @@ fn cycle_detection_indirect() {
         vec![Field::new(
             "val",
             FieldValue::Integer(1),
+            FieldType::INTEGER,
             SecurityLabel::new(0, "public"),
             TrustDistancePolicy::new(10, 10),
         )],
@@ -118,6 +122,7 @@ fn cycle_detection_indirect() {
     let mut b_field = Field::new(
         "val",
         FieldValue::Null,
+        FieldType::INTEGER,
         SecurityLabel::new(0, "public"),
         TrustDistancePolicy::new(10, 10),
     );
@@ -130,6 +135,7 @@ fn cycle_detection_indirect() {
     let mut c_field = Field::new(
         "val",
         FieldValue::Null,
+        FieldType::INTEGER,
         SecurityLabel::new(0, "public"),
         TrustDistancePolicy::new(10, 10),
     );
@@ -172,8 +178,8 @@ fn list_transforms_returns_registered() {
             name: "transform_one".to_string(),
             reversibility: Reversibility::Irreversible,
             min_output_label: SecurityLabel::new(0, "public"),
-            input_type: "String".to_string(),
-            output_type: "String".to_string(),
+            input_type: FieldType::STRING,
+            output_type: FieldType::STRING,
         },
         Box::new(|v| v.clone()),
         None,
@@ -197,8 +203,8 @@ fn label_violation_output_lower_than_input_rejected() {
             name: "upper".to_string(),
             reversibility: Reversibility::Irreversible,
             min_output_label: SecurityLabel::new(0, "public"),
-            input_type: "String".to_string(),
-            output_type: "String".to_string(),
+            input_type: FieldType::STRING,
+            output_type: FieldType::STRING,
         },
         Box::new(|v| v.clone()),
         None,
@@ -212,6 +218,7 @@ fn label_violation_output_lower_than_input_rejected() {
         vec![Field::new(
             "data",
             FieldValue::String("secret".to_string()),
+            FieldType::STRING,
             SecurityLabel::new(2, "classified"),
             TrustDistancePolicy::new(10, 10),
         )],
@@ -222,6 +229,7 @@ fn label_violation_output_lower_than_input_rejected() {
     let mut derived_field = Field::new(
         "data",
         FieldValue::Null,
+        FieldType::STRING,
         SecurityLabel::new(0, "public"), // lower than source!
         TrustDistancePolicy::new(10, 10),
     );
@@ -242,8 +250,8 @@ fn label_equal_level_is_allowed() {
             name: "passthrough".to_string(),
             reversibility: Reversibility::Irreversible,
             min_output_label: SecurityLabel::new(0, "public"),
-            input_type: "String".to_string(),
-            output_type: "String".to_string(),
+            input_type: FieldType::STRING,
+            output_type: FieldType::STRING,
         },
         Box::new(|v| v.clone()),
         None,
@@ -256,6 +264,7 @@ fn label_equal_level_is_allowed() {
         vec![Field::new(
             "data",
             FieldValue::String("hello".to_string()),
+            FieldType::STRING,
             SecurityLabel::new(1, "internal"),
             TrustDistancePolicy::new(10, 10),
         )],
@@ -266,6 +275,7 @@ fn label_equal_level_is_allowed() {
     let mut derived_field = Field::new(
         "data",
         FieldValue::Null,
+        FieldType::STRING,
         SecurityLabel::new(1, "internal"),
         TrustDistancePolicy::new(10, 10),
     );

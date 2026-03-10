@@ -6,7 +6,7 @@
 
 use fold_db_core::engine::FoldEngine;
 use fold_db_core::types::{
-    AccessContext, Field, FieldValue, Fold, SecurityLabel, TrustDistancePolicy,
+    AccessContext, Field, FieldType, FieldValue, Fold, SecurityLabel, TrustDistancePolicy,
 };
 
 #[test]
@@ -19,6 +19,7 @@ fn successful_read_is_audited() {
         vec![Field::new(
             "data",
             FieldValue::String("hello".to_string()),
+            FieldType::STRING,
             SecurityLabel::new(0, "public"),
             TrustDistancePolicy::new(10, 10),
         )],
@@ -44,6 +45,7 @@ fn denied_read_is_audited() {
         vec![Field::new(
             "secret",
             FieldValue::String("hidden".to_string()),
+            FieldType::STRING,
             SecurityLabel::new(0, "public"),
             TrustDistancePolicy::new(0, 0), // owner only
         )],
@@ -70,6 +72,7 @@ fn successful_write_is_audited() {
         vec![Field::new(
             "data",
             FieldValue::String("old".to_string()),
+            FieldType::STRING,
             SecurityLabel::new(0, "public"),
             TrustDistancePolicy::new(10, 10),
         )],
@@ -101,6 +104,7 @@ fn multiple_operations_accumulate() {
         vec![Field::new(
             "val",
             FieldValue::Integer(0),
+            FieldType::INTEGER,
             SecurityLabel::new(0, "public"),
             TrustDistancePolicy::new(10, 10),
         )],
@@ -128,6 +132,7 @@ fn events_filtered_by_user() {
         vec![Field::new(
             "data",
             FieldValue::String("hello".to_string()),
+            FieldType::STRING,
             SecurityLabel::new(0, "public"),
             TrustDistancePolicy::new(10, 10),
         )],

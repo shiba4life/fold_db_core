@@ -13,7 +13,7 @@
 use fold_db_core::engine::FoldEngine;
 use fold_db_core::transform::{RegisteredTransform, Reversibility, TransformDef};
 use fold_db_core::types::{
-    AccessContext, Field, FieldValue, Fold, SecurityLabel, TrustDistancePolicy,
+    AccessContext, Field, FieldType, FieldValue, Fold, SecurityLabel, TrustDistancePolicy,
 };
 
 #[test]
@@ -29,18 +29,21 @@ fn all_or_nothing_one_field_denied_means_nothing() {
             Field::new(
                 "public",
                 FieldValue::String("visible".to_string()),
+                FieldType::STRING,
                 SecurityLabel::new(0, "public"),
                 TrustDistancePolicy::new(0, 5), // readable at τ=3
             ),
             Field::new(
                 "semi",
                 FieldValue::String("semi-visible".to_string()),
+                FieldType::STRING,
                 SecurityLabel::new(1, "internal"),
                 TrustDistancePolicy::new(0, 5), // readable at τ=3
             ),
             Field::new(
                 "secret",
                 FieldValue::String("hidden".to_string()),
+                FieldType::STRING,
                 SecurityLabel::new(2, "classified"),
                 TrustDistancePolicy::new(0, 1), // NOT readable at τ=3
             ),
@@ -67,18 +70,21 @@ fn all_fields_pass_returns_full_projection() {
             Field::new(
                 "a",
                 FieldValue::Integer(1),
+                FieldType::INTEGER,
                 SecurityLabel::new(0, "public"),
                 TrustDistancePolicy::new(0, 5),
             ),
             Field::new(
                 "b",
                 FieldValue::Integer(2),
+                FieldType::INTEGER,
                 SecurityLabel::new(0, "public"),
                 TrustDistancePolicy::new(0, 5),
             ),
             Field::new(
                 "c",
                 FieldValue::Integer(3),
+                FieldType::INTEGER,
                 SecurityLabel::new(0, "public"),
                 TrustDistancePolicy::new(0, 5),
             ),
@@ -118,8 +124,8 @@ fn three_level_fold_composition() {
             name: "double".to_string(),
             reversibility: Reversibility::Irreversible,
             min_output_label: SecurityLabel::new(0, "public"),
-            input_type: "Integer".to_string(),
-            output_type: "Integer".to_string(),
+            input_type: FieldType::INTEGER,
+            output_type: FieldType::INTEGER,
         },
         Box::new(|val| match val {
             FieldValue::Integer(n) => FieldValue::Integer(n * 2),
@@ -135,8 +141,8 @@ fn three_level_fold_composition() {
             name: "negate".to_string(),
             reversibility: Reversibility::Irreversible,
             min_output_label: SecurityLabel::new(0, "public"),
-            input_type: "Integer".to_string(),
-            output_type: "Integer".to_string(),
+            input_type: FieldType::INTEGER,
+            output_type: FieldType::INTEGER,
         },
         Box::new(|val| match val {
             FieldValue::Integer(n) => FieldValue::Integer(-n),
@@ -153,6 +159,7 @@ fn three_level_fold_composition() {
         vec![Field::new(
             "num",
             FieldValue::Integer(5),
+            FieldType::INTEGER,
             SecurityLabel::new(0, "public"),
             TrustDistancePolicy::new(0, 10),
         )],
@@ -163,6 +170,7 @@ fn three_level_fold_composition() {
     let mut f2_field = Field::new(
         "num",
         FieldValue::Null,
+        FieldType::INTEGER,
         SecurityLabel::new(0, "public"),
         TrustDistancePolicy::new(0, 10),
     );
@@ -175,6 +183,7 @@ fn three_level_fold_composition() {
     let mut f3_field = Field::new(
         "num",
         FieldValue::Null,
+        FieldType::INTEGER,
         SecurityLabel::new(0, "public"),
         TrustDistancePolicy::new(0, 10),
     );
@@ -211,6 +220,7 @@ fn same_data_multiple_folds_different_policies() {
         vec![Field::new(
             "data",
             FieldValue::String("hello".to_string()),
+            FieldType::STRING,
             SecurityLabel::new(0, "public"),
             TrustDistancePolicy::new(10, 10),
         )],
@@ -222,6 +232,7 @@ fn same_data_multiple_folds_different_policies() {
         vec![Field::new(
             "data",
             FieldValue::String("hello".to_string()),
+            FieldType::STRING,
             SecurityLabel::new(0, "public"),
             TrustDistancePolicy::new(0, 0), // owner only
         )],

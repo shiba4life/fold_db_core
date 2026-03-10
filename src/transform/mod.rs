@@ -3,7 +3,7 @@ pub mod expr;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::types::FieldValue;
+use crate::types::{FieldType, FieldValue};
 use crate::types::SecurityLabel;
 
 pub use expr::TransformExpr;
@@ -21,6 +21,9 @@ pub enum Reversibility {
 /// A registered transform function.
 /// Transforms derive a field in one fold from a field in another.
 /// Each field has at most one active transform.
+///
+/// Input and output types are `FieldType` — enabling static type checking
+/// at registration time without inspecting data.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransformDef {
     /// Content-addressed identifier (hash of the definition).
@@ -29,18 +32,18 @@ pub struct TransformDef {
     pub reversibility: Reversibility,
     /// Minimum output security label: l_in ⊑ l_out.
     pub min_output_label: SecurityLabel,
-    /// Input field type description.
-    pub input_type: String,
-    /// Output field type description.
-    pub output_type: String,
+    /// Input field type — the type of the source field this transform reads.
+    pub input_type: FieldType,
+    /// Output field type — the type of the derived field this transform produces.
+    pub output_type: FieldType,
 }
 
 impl TransformDef {
-    pub fn content_hash(name: &str, input_type: &str, output_type: &str) -> String {
+    pub fn content_hash(name: &str, input_type: &FieldType, output_type: &FieldType) -> String {
         let mut hasher = Sha256::new();
         hasher.update(name.as_bytes());
-        hasher.update(input_type.as_bytes());
-        hasher.update(output_type.as_bytes());
+        hasher.update(format!("{input_type}").as_bytes());
+        hasher.update(format!("{output_type}").as_bytes());
         hex::encode(hasher.finalize())
     }
 }

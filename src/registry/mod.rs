@@ -42,29 +42,60 @@ impl FoldRegistry {
                     return Err(RegistryError::TransformNotFound(transform_id.clone()));
                 }
 
-                // Validate security label ordering: l_in ⊑ l_out
+                // Validate security label ordering and type compatibility
                 if let Some(source_fold_id) = &field.source_fold_id
                     && let Some(source_fold) = self.folds.get(source_fold_id)
                 {
                     let transform = &self.transforms[transform_id];
+
+                    // Type check: transform output_type must match target field's field_type
+                    if transform.def.output_type != field.field_type {
+                        return Err(RegistryError::TypeMismatch {
+                            field: field.name.clone(),
+                            reason: format!(
+                                "transform output type {} does not match field type {}",
+                                transform.def.output_type, field.field_type
+                            ),
+                        });
+                    }
+
+                    // Type check: transform input_type must match source field's field_type
+                    let source_field_name = field
+                        .source_field_name
+                        .as_deref()
+                        .unwrap_or(&field.name);
+                    if let Some(source_field) =
+                        source_fold.fields.iter().find(|f| f.name == source_field_name)
+                    {
+                        if transform.def.input_type != source_field.field_type {
+                            return Err(RegistryError::TypeMismatch {
+                                field: field.name.clone(),
+                                reason: format!(
+                                    "transform input type {} does not match source field type {}",
+                                    transform.def.input_type, source_field.field_type
+                                ),
+                            });
+                        }
+
+                        // Security label ordering: source label ⊑ output label
+                        if !source_field.label.flows_to(&field.label) {
+                            return Err(RegistryError::LabelViolation {
+                                field: field.name.clone(),
+                                reason: format!(
+                                    "source label {:?} does not flow to output label {:?}",
+                                    source_field.label, field.label
+                                ),
+                            });
+                        }
+                    }
+
+                    // Security label ordering: transform min_output_label ⊑ field label
                     if !transform.def.min_output_label.flows_to(&field.label) {
                         return Err(RegistryError::LabelViolation {
                             field: field.name.clone(),
                             reason: format!(
                                 "transform min output label {:?} does not flow to field label {:?}",
                                 transform.def.min_output_label, field.label
-                            ),
-                        });
-                    }
-                    if let Some(source_field) =
-                        source_fold.fields.iter().find(|f| f.name == field.name)
-                        && !source_field.label.flows_to(&field.label)
-                    {
-                        return Err(RegistryError::LabelViolation {
-                            field: field.name.clone(),
-                            reason: format!(
-                                "source label {:?} does not flow to output label {:?}",
-                                source_field.label, field.label
                             ),
                         });
                     }
@@ -173,4 +204,6 @@ pub enum RegistryError {
     LabelViolation { field: String, reason: String },
     #[error("invalid transform: {0}")]
     InvalidTransform(String),
+    #[error("type mismatch on field {field}: {reason}")]
+    TypeMismatch { field: String, reason: String },
 }

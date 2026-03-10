@@ -12,5 +12,6 @@ pub use engine::FoldEngine;
 pub use registry::FoldRegistry;
 pub use store::AppendOnlyStore;
 pub use types::{
-    AccessContext, Field, FieldValue, Fold, FoldId, SecurityLabel, TrustDistancePolicy,
+    AccessContext, Field, FieldType, FieldValue, Fold, FoldId, ScalarType, SecurityLabel,
+    TrustDistancePolicy,
 };

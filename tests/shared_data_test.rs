@@ -13,7 +13,7 @@
 use fold_db_core::api::*;
 use fold_db_core::transform::{Reversibility, TransformDef};
 use fold_db_core::types::{
-    AccessContext, FieldValue, SecurityLabel, TrustDistancePolicy,
+    AccessContext, FieldType, FieldValue, SecurityLabel, TrustDistancePolicy,
 };
 
 fn owner() -> AccessContext {
@@ -21,9 +21,17 @@ fn owner() -> AccessContext {
 }
 
 fn base_field(name: &str, value: FieldValue) -> FieldDef {
+    let field_type = match &value {
+        FieldValue::String(_) => FieldType::STRING,
+        FieldValue::Integer(_) => FieldType::INTEGER,
+        FieldValue::Float(_) => FieldType::FLOAT,
+        FieldValue::Boolean(_) => FieldType::BOOLEAN,
+        _ => FieldType::STRING,
+    };
     FieldDef {
         name: name.to_string(),
         value,
+        field_type,
         label: SecurityLabel::new(1, "internal"),
         policy: TrustDistancePolicy::new(1, 1),
         capabilities: vec![],
@@ -35,6 +43,7 @@ fn base_field(name: &str, value: FieldValue) -> FieldDef {
 
 fn derived_field(
     name: &str,
+    field_type: FieldType,
     transform_id: &str,
     source_fold_id: &str,
     source_field_name: Option<&str>,
@@ -43,6 +52,7 @@ fn derived_field(
     FieldDef {
         name: name.to_string(),
         value: FieldValue::Null,
+        field_type,
         label: SecurityLabel::new(1, "internal"),
         policy: TrustDistancePolicy::new(0, read_max),
         capabilities: vec![],
@@ -64,8 +74,8 @@ fn setup() -> FoldDbApi {
             name: "usd_to_eur".to_string(),
             reversibility: Reversibility::Reversible,
             min_output_label: SecurityLabel::new(1, "internal"),
-            input_type: "Float".to_string(),
-            output_type: "Float".to_string(),
+            input_type: FieldType::FLOAT,
+            output_type: FieldType::FLOAT,
         },
         Box::new(|v| match v {
             FieldValue::Float(n) => FieldValue::Float((n * 0.85 * 100.0).round() / 100.0),
@@ -85,8 +95,8 @@ fn setup() -> FoldDbApi {
             name: "salary_band".to_string(),
             reversibility: Reversibility::Irreversible,
             min_output_label: SecurityLabel::new(1, "internal"),
-            input_type: "Float".to_string(),
-            output_type: "String".to_string(),
+            input_type: FieldType::FLOAT,
+            output_type: FieldType::STRING,
         },
         Box::new(|v| match v {
             FieldValue::Float(n) => {
@@ -107,8 +117,8 @@ fn setup() -> FoldDbApi {
             name: "uppercase".to_string(),
             reversibility: Reversibility::Irreversible,
             min_output_label: SecurityLabel::new(1, "internal"),
-            input_type: "String".to_string(),
-            output_type: "String".to_string(),
+            input_type: FieldType::STRING,
+            output_type: FieldType::STRING,
         },
         Box::new(|v| match v {
             FieldValue::String(s) => FieldValue::String(s.to_uppercase()),
@@ -138,7 +148,7 @@ fn setup() -> FoldDbApi {
         fold_id: "hr_view".to_string(),
         owner_id: "company".to_string(),
         fields: vec![
-            derived_field("salary_eur", "usd_to_eur", "employee_record", Some("salary"), 2),
+            derived_field("salary_eur", FieldType::FLOAT, "usd_to_eur", "employee_record", Some("salary"), 2),
         ],
         payment_gate: None,
     })
@@ -150,8 +160,8 @@ fn setup() -> FoldDbApi {
         fold_id: "directory_view".to_string(),
         owner_id: "company".to_string(),
         fields: vec![
-            derived_field("salary_band", "salary_band", "employee_record", Some("salary"), 5),
-            derived_field("name", "uppercase", "employee_record", None, 5),
+            derived_field("salary_band", FieldType::STRING, "salary_band", "employee_record", Some("salary"), 5),
+            derived_field("name", FieldType::STRING, "uppercase", "employee_record", None, 5),
         ],
         payment_gate: None,
     })
@@ -163,8 +173,8 @@ fn setup() -> FoldDbApi {
         fold_id: "analytics_view".to_string(),
         owner_id: "company".to_string(),
         fields: vec![
-            derived_field("name", "uppercase", "employee_record", None, 10),
-            derived_field("department", "uppercase", "employee_record", None, 10),
+            derived_field("name", FieldType::STRING, "uppercase", "employee_record", None, 10),
+            derived_field("department", FieldType::STRING, "uppercase", "employee_record", None, 10),
         ],
         payment_gate: None,
     })

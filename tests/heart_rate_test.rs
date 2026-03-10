@@ -3,20 +3,21 @@
 //! A patient records heart rate readings as sequential writes to a fold.
 //! The append-only store preserves every reading as version history.
 //! Three derived folds expose the same data differently:
-//!   - "clinical_hr": raw BPM, only attending physician (τ≤1)
-//!   - "alert_hr": classifies latest reading as normal/elevated/high, nurse access (τ≤2)
-//!   - "research_hr": rounds BPM to nearest 10 (de-identified), researcher access (τ≤5)
+//!   - "clinical_hr": raw BPM, only attending physician (t<=1)
+//!   - "alert_hr": classifies latest reading as normal/elevated/high, nurse access (t<=2)
+//!   - "research_hr": rounds BPM to nearest 10 (de-identified), researcher access (t<=5)
 
 use fold_db_core::api::*;
 use fold_db_core::transform::{Reversibility, TransformDef};
 use fold_db_core::types::{
     AccessContext, FieldValue, SecurityLabel, TrustDistancePolicy,
 };
+use fold_db_core::FieldType;
 
 fn setup() -> FoldDbApi {
     let mut api = FoldDbApi::new();
 
-    // ── Transforms ───────────────────────────────────────────────
+    // -- Transforms ---------------------------------------------------
 
     // Classify heart rate: <60 "bradycardia", 60-100 "normal", 100-120 "elevated", >120 "tachycardia"
     api.register_transform(
@@ -25,8 +26,8 @@ fn setup() -> FoldDbApi {
             name: "classify_heart_rate".to_string(),
             reversibility: Reversibility::Irreversible,
             min_output_label: SecurityLabel::new(1, "medical"),
-            input_type: "Integer".to_string(),
-            output_type: "String".to_string(),
+            input_type: FieldType::INTEGER,
+            output_type: FieldType::STRING,
         },
         Box::new(|v| match v {
             FieldValue::Integer(bpm) => {
@@ -51,8 +52,8 @@ fn setup() -> FoldDbApi {
             name: "round_to_nearest_10".to_string(),
             reversibility: Reversibility::Irreversible,
             min_output_label: SecurityLabel::new(1, "medical"),
-            input_type: "Integer".to_string(),
-            output_type: "Integer".to_string(),
+            input_type: FieldType::INTEGER,
+            output_type: FieldType::INTEGER,
         },
         Box::new(|v| match v {
             FieldValue::Integer(n) => FieldValue::Integer((n + 5) / 10 * 10),
@@ -62,7 +63,7 @@ fn setup() -> FoldDbApi {
     )
     .unwrap();
 
-    // ── Source fold: raw heart rate readings ─────────────────────
+    // -- Source fold: raw heart rate readings -------------------------
 
     api.create_fold(CreateFoldRequest {
         fold_id: "patient_hr".to_string(),
@@ -71,6 +72,7 @@ fn setup() -> FoldDbApi {
             FieldDef {
                 name: "bpm".to_string(),
                 value: FieldValue::Integer(72),
+                field_type: FieldType::INTEGER,
                 label: SecurityLabel::new(2, "medical"),
                 policy: TrustDistancePolicy::new(1, 1),
                 capabilities: vec![],
@@ -81,6 +83,7 @@ fn setup() -> FoldDbApi {
             FieldDef {
                 name: "patient_name".to_string(),
                 value: FieldValue::String("Alice Johnson".to_string()),
+                field_type: FieldType::STRING,
                 label: SecurityLabel::new(2, "PII"),
                 policy: TrustDistancePolicy::new(0, 1),
                 capabilities: vec![],
@@ -93,7 +96,7 @@ fn setup() -> FoldDbApi {
     })
     .unwrap();
 
-    // ── Derived: alert classification ───────────────────────────
+    // -- Derived: alert classification -------------------------------
 
     api.create_fold(CreateFoldRequest {
         fold_id: "alert_hr".to_string(),
@@ -101,6 +104,7 @@ fn setup() -> FoldDbApi {
         fields: vec![FieldDef {
             name: "status".to_string(),
             value: FieldValue::Null,
+            field_type: FieldType::STRING,
             label: SecurityLabel::new(2, "medical"),
             policy: TrustDistancePolicy::new(0, 2),
             capabilities: vec![],
@@ -112,7 +116,7 @@ fn setup() -> FoldDbApi {
     })
     .unwrap();
 
-    // ── Derived: de-identified research view ────────────────────
+    // -- Derived: de-identified research view ------------------------
 
     api.create_fold(CreateFoldRequest {
         fold_id: "research_hr".to_string(),
@@ -120,6 +124,7 @@ fn setup() -> FoldDbApi {
         fields: vec![FieldDef {
             name: "bpm_approx".to_string(),
             value: FieldValue::Null,
+            field_type: FieldType::INTEGER,
             label: SecurityLabel::new(2, "medical"),
             policy: TrustDistancePolicy::new(0, 5),
             capabilities: vec![],
@@ -131,7 +136,7 @@ fn setup() -> FoldDbApi {
     })
     .unwrap();
 
-    // ── Trust ───────────────────────────────────────────────────
+    // -- Trust -------------------------------------------------------
 
     api.assign_trust("patient", "dr_smith", 1);    // attending physician
     api.assign_trust("patient", "nurse_jones", 2); // nurse
@@ -156,7 +161,7 @@ fn patient_ctx() -> AccessContext {
     AccessContext::owner("patient")
 }
 
-// ── Test: initial reading flows through all views ────────────────────
+// -- Test: initial reading flows through all views --------------------
 
 #[test]
 fn initial_reading_visible_through_all_derived_folds() {
@@ -170,7 +175,7 @@ fn initial_reading_visible_through_all_derived_folds() {
     let fields = resp.fields.expect("doctor should see patient_hr");
     assert_eq!(fields.get("bpm"), Some(&FieldValue::Integer(72)));
 
-    // Nurse sees classification: 72 → "normal"
+    // Nurse sees classification: 72 -> "normal"
     let resp = api.query_fold(QueryRequest {
         fold_id: "alert_hr".to_string(),
         context: nurse_ctx(),
@@ -181,7 +186,7 @@ fn initial_reading_visible_through_all_derived_folds() {
         Some(&FieldValue::String("normal".to_string()))
     );
 
-    // Researcher sees rounded: 72 → 70
+    // Researcher sees rounded: 72 -> 70
     let resp = api.query_fold(QueryRequest {
         fold_id: "research_hr".to_string(),
         context: researcher_ctx(),
@@ -190,7 +195,7 @@ fn initial_reading_visible_through_all_derived_folds() {
     assert_eq!(fields.get("bpm_approx"), Some(&FieldValue::Integer(70)));
 }
 
-// ── Test: sequential readings build a time series in history ─────────
+// -- Test: sequential readings build a time series in history ---------
 
 #[test]
 fn sequential_readings_build_time_series() {
@@ -235,7 +240,7 @@ fn sequential_readings_build_time_series() {
     );
 }
 
-// ── Test: derived folds always reflect the latest reading ────────────
+// -- Test: derived folds always reflect the latest reading ------------
 
 #[test]
 fn derived_folds_track_latest_reading() {
@@ -285,13 +290,13 @@ fn derived_folds_track_latest_reading() {
     }
 }
 
-// ── Test: access control — each role sees only their view ────────────
+// -- Test: access control --- each role sees only their view ----------
 
 #[test]
 fn roles_see_only_permitted_views() {
     let mut api = setup();
 
-    // Doctor (τ=1): sees raw data, but also alert and research (τ≤2, τ≤5)
+    // Doctor (t=1): sees raw data, but also alert and research (t<=2, t<=5)
     let resp = api.query_fold(QueryRequest {
         fold_id: "patient_hr".to_string(),
         context: doctor_ctx(),
@@ -304,7 +309,7 @@ fn roles_see_only_permitted_views() {
     });
     assert!(resp.fields.is_some(), "doctor should see alert_hr");
 
-    // Nurse (τ=2): sees alert view, but NOT raw data (R≤1)
+    // Nurse (t=2): sees alert view, but NOT raw data (R<=1)
     let resp = api.query_fold(QueryRequest {
         fold_id: "alert_hr".to_string(),
         context: nurse_ctx(),
@@ -317,7 +322,7 @@ fn roles_see_only_permitted_views() {
     });
     assert!(resp.fields.is_none(), "nurse should NOT see raw patient_hr");
 
-    // Researcher (τ=4): sees research view, but NOT alert (R≤2) or raw (R≤1)
+    // Researcher (t=4): sees research view, but NOT alert (R<=2) or raw (R<=1)
     let resp = api.query_fold(QueryRequest {
         fold_id: "research_hr".to_string(),
         context: researcher_ctx(),
@@ -337,7 +342,7 @@ fn roles_see_only_permitted_views() {
     assert!(resp.fields.is_none(), "researcher should NOT see patient_hr");
 }
 
-// ── Test: researcher cannot see patient identity ─────────────────────
+// -- Test: researcher cannot see patient identity ---------------------
 
 #[test]
 fn researcher_never_sees_patient_identity() {
@@ -350,16 +355,16 @@ fn researcher_never_sees_patient_identity() {
     });
     let fields = resp.fields.unwrap();
     assert!(
-        fields.get("patient_name").is_none(),
+        !fields.contains_key("patient_name"),
         "research view should not expose patient_name"
     );
     assert!(
-        fields.get("bpm_approx").is_some(),
+        fields.contains_key("bpm_approx"),
         "research view should have bpm_approx"
     );
 }
 
-// ── Test: history is only accessible with read permission ────────────
+// -- Test: history is only accessible with read permission -------------
 
 #[test]
 fn history_requires_read_access() {
@@ -387,7 +392,7 @@ fn history_requires_read_access() {
     assert!(result.is_ok());
     assert_eq!(result.unwrap().len(), 3);
 
-    // Nurse cannot access raw history (τ=2 > R1)
+    // Nurse cannot access raw history (t=2 > R1)
     let result = api.get_field_history(HistoryRequest {
         fold_id: "patient_hr".to_string(),
         field_name: "bpm".to_string(),
@@ -396,7 +401,7 @@ fn history_requires_read_access() {
     assert!(result.is_err(), "nurse should not access raw bpm history");
 }
 
-// ── Test: rollback to a previous reading ─────────────────────────────
+// -- Test: rollback to a previous reading -----------------------------
 
 #[test]
 fn rollback_restores_previous_reading() {
@@ -476,7 +481,7 @@ fn rollback_restores_previous_reading() {
     assert_eq!(history[2].value, FieldValue::Integer(72));
 }
 
-// ── Test: audit trail captures all readings ──────────────────────────
+// -- Test: audit trail captures all readings --------------------------
 
 #[test]
 fn audit_trail_captures_all_heart_rate_activity() {

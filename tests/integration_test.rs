@@ -5,7 +5,7 @@ use fold_db_core::access::PaymentGate;
 use fold_db_core::api::*;
 use fold_db_core::transform::{Reversibility, TransformDef};
 use fold_db_core::types::{
-    AccessContext, CapabilityConstraint, CapabilityKind, FieldValue, SecurityLabel,
+    AccessContext, CapabilityConstraint, CapabilityKind, FieldType, FieldValue, SecurityLabel,
     TrustDistancePolicy,
 };
 
@@ -20,15 +20,23 @@ fn user_ctx(user: &str, trust: u64) -> AccessContext {
 }
 
 fn public_field(name: &str, value: FieldValue) -> FieldDef {
+    let field_type = match &value {
+        FieldValue::String(_) => FieldType::STRING,
+        FieldValue::Integer(_) => FieldType::INTEGER,
+        FieldValue::Float(_) => FieldType::FLOAT,
+        FieldValue::Boolean(_) => FieldType::BOOLEAN,
+        _ => FieldType::STRING,
+    };
     FieldDef {
         name: name.to_string(),
         value,
+        field_type,
         label: SecurityLabel::new(0, "public"),
         policy: TrustDistancePolicy::new(10, 10),
         capabilities: vec![],
         transform_id: None,
         source_fold_id: None,
-            source_field_name: None,
+        source_field_name: None,
     }
 }
 
@@ -46,22 +54,24 @@ fn medical_records_multi_role_access() {
             FieldDef {
                 name: "name".to_string(),
                 value: FieldValue::String("Jane Doe".to_string()),
+                field_type: FieldType::STRING,
                 label: SecurityLabel::new(2, "PII"),
                 policy: TrustDistancePolicy::new(0, 1), // only τ≤1
                 capabilities: vec![],
                 transform_id: None,
                 source_fold_id: None,
-            source_field_name: None,
+                source_field_name: None,
             },
             FieldDef {
                 name: "diagnosis".to_string(),
                 value: FieldValue::String("hypertension".to_string()),
+                field_type: FieldType::STRING,
                 label: SecurityLabel::new(2, "medical"),
                 policy: TrustDistancePolicy::new(1, 1),
                 capabilities: vec![],
                 transform_id: None,
                 source_fold_id: None,
-            source_field_name: None,
+                source_field_name: None,
             },
         ],
         payment_gate: None,
@@ -76,22 +86,24 @@ fn medical_records_multi_role_access() {
             FieldDef {
                 name: "account_id".to_string(),
                 value: FieldValue::String("ACCT-9876".to_string()),
+                field_type: FieldType::STRING,
                 label: SecurityLabel::new(1, "internal"),
                 policy: TrustDistancePolicy::new(3, 5),
                 capabilities: vec![],
                 transform_id: None,
                 source_fold_id: None,
-            source_field_name: None,
+                source_field_name: None,
             },
             FieldDef {
                 name: "balance".to_string(),
                 value: FieldValue::Float(1250.00),
+                field_type: FieldType::FLOAT,
                 label: SecurityLabel::new(1, "financial"),
                 policy: TrustDistancePolicy::new(3, 5),
                 capabilities: vec![],
                 transform_id: None,
                 source_fold_id: None,
-            source_field_name: None,
+                source_field_name: None,
             },
         ],
         payment_gate: None,
@@ -165,8 +177,8 @@ fn transform_chain_with_rollback() {
             name: "double".to_string(),
             reversibility: Reversibility::Reversible,
             min_output_label: SecurityLabel::new(0, "public"),
-            input_type: "Integer".to_string(),
-            output_type: "Integer".to_string(),
+            input_type: FieldType::INTEGER,
+            output_type: FieldType::INTEGER,
         },
         Box::new(|v| match v {
             FieldValue::Integer(n) => FieldValue::Integer(n * 2),
@@ -195,6 +207,7 @@ fn transform_chain_with_rollback() {
         fields: vec![FieldDef {
             name: "val".to_string(),
             value: FieldValue::Null,
+            field_type: FieldType::INTEGER,
             label: SecurityLabel::new(0, "public"),
             policy: TrustDistancePolicy::new(10, 10),
             capabilities: vec![],
@@ -307,12 +320,13 @@ fn paid_content_marketplace() {
             FieldDef {
                 name: "content".to_string(),
                 value: FieldValue::String("Full article body here...".to_string()),
+                field_type: FieldType::STRING,
                 label: SecurityLabel::new(0, "public"),
                 policy: TrustDistancePolicy::new(0, 10),
                 capabilities: vec![],
                 transform_id: None,
                 source_fold_id: None,
-            source_field_name: None,
+                source_field_name: None,
             },
         ],
         payment_gate: Some(PaymentGate::Fixed(5.0)),
@@ -364,6 +378,7 @@ fn capability_gated_writes_with_exhaustion() {
         fields: vec![FieldDef {
             name: "data".to_string(),
             value: FieldValue::String("initial".to_string()),
+            field_type: FieldType::STRING,
             label: SecurityLabel::new(0, "public"),
             policy: TrustDistancePolicy::new(10, 10),
             capabilities: vec![CapabilityConstraint {
@@ -437,6 +452,7 @@ fn trust_revocation_cascades_to_dependents() {
         fields: vec![FieldDef {
             name: "val".to_string(),
             value: FieldValue::String("sensitive".to_string()),
+            field_type: FieldType::STRING,
             label: SecurityLabel::new(0, "public"),
             policy: TrustDistancePolicy::new(0, 5),
             capabilities: vec![],
@@ -579,8 +595,8 @@ fn full_lifecycle() {
             name: "uppercase".to_string(),
             reversibility: Reversibility::Irreversible,
             min_output_label: SecurityLabel::new(0, "public"),
-            input_type: "String".to_string(),
-            output_type: "String".to_string(),
+            input_type: FieldType::STRING,
+            output_type: FieldType::STRING,
         },
         Box::new(|v| match v {
             FieldValue::String(s) => FieldValue::String(s.to_uppercase()),
@@ -606,6 +622,7 @@ fn full_lifecycle() {
         fields: vec![FieldDef {
             name: "name".to_string(),
             value: FieldValue::Null,
+            field_type: FieldType::STRING,
             label: SecurityLabel::new(0, "public"),
             policy: TrustDistancePolicy::new(10, 10),
             capabilities: vec![],
@@ -720,8 +737,8 @@ fn write_to_irreversible_derived_fold_denied() {
             name: "hash".to_string(),
             reversibility: Reversibility::Irreversible,
             min_output_label: SecurityLabel::new(0, "public"),
-            input_type: "String".to_string(),
-            output_type: "String".to_string(),
+            input_type: FieldType::STRING,
+            output_type: FieldType::STRING,
         },
         Box::new(|v| match v {
             FieldValue::String(s) => FieldValue::String(format!("hash({s})")),
@@ -745,6 +762,7 @@ fn write_to_irreversible_derived_fold_denied() {
         fields: vec![FieldDef {
             name: "val".to_string(),
             value: FieldValue::Null,
+            field_type: FieldType::STRING,
             label: SecurityLabel::new(0, "public"),
             policy: TrustDistancePolicy::new(10, 10),
             capabilities: vec![],
@@ -801,6 +819,7 @@ fn same_data_exposed_through_multiple_folds() {
         fields: vec![FieldDef {
             name: "info".to_string(),
             value: data,
+            field_type: FieldType::STRING,
             label: SecurityLabel::new(0, "public"),
             policy: TrustDistancePolicy::new(0, 0), // owner only
             capabilities: vec![],

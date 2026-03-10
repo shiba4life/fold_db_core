@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::security_label::SecurityLabel;
-use super::value::FieldValue;
+use super::value::{FieldType, FieldValue};
 
 /// Trust-distance policy W_n R_m for a field.
 /// Writable if τ ≤ write_max, Readable if τ ≤ read_max.
@@ -49,12 +49,18 @@ pub enum CapabilityKind {
     Read,
 }
 
-/// A field within a fold. Each field carries a value, security label,
+/// A field within a fold. Each field carries a typed value, security label,
 /// trust-distance policy, and optional capability constraints.
+///
+/// Fields are strictly typed: `field_type` declares the type at the schema level,
+/// and the value must conform to it. Transforms are verified against field types
+/// at registration time.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Field {
     pub name: String,
     pub value: FieldValue,
+    /// The declared type of this field. Values must conform to this type.
+    pub field_type: FieldType,
     pub label: SecurityLabel,
     pub policy: TrustDistancePolicy,
     pub capabilities: Vec<CapabilityConstraint>,
@@ -70,12 +76,14 @@ impl Field {
     pub fn new(
         name: impl Into<String>,
         value: FieldValue,
+        field_type: FieldType,
         label: SecurityLabel,
         policy: TrustDistancePolicy,
     ) -> Self {
         Self {
             name: name.into(),
             value,
+            field_type,
             label,
             policy,
             capabilities: Vec::new(),

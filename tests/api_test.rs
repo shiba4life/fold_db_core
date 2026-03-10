@@ -6,18 +6,26 @@
 
 use fold_db_core::api::*;
 use fold_db_core::transform::{Reversibility, TransformDef};
-use fold_db_core::types::{AccessContext, FieldValue, SecurityLabel, TrustDistancePolicy};
+use fold_db_core::types::{AccessContext, FieldType, FieldValue, SecurityLabel, TrustDistancePolicy};
 
 fn simple_field_def(name: &str, value: FieldValue) -> FieldDef {
+    let field_type = match &value {
+        FieldValue::String(_) => FieldType::STRING,
+        FieldValue::Integer(_) => FieldType::INTEGER,
+        FieldValue::Float(_) => FieldType::FLOAT,
+        FieldValue::Boolean(_) => FieldType::BOOLEAN,
+        _ => FieldType::STRING,
+    };
     FieldDef {
         name: name.to_string(),
         value,
+        field_type,
         label: SecurityLabel::new(0, "public"),
         policy: TrustDistancePolicy::new(10, 10),
         capabilities: vec![],
         transform_id: None,
         source_fold_id: None,
-            source_field_name: None,
+        source_field_name: None,
     }
 }
 
@@ -178,6 +186,7 @@ fn trust_affects_query_access() {
         fields: vec![FieldDef {
             name: "data".to_string(),
             value: FieldValue::String("secret".to_string()),
+            field_type: FieldType::STRING,
             label: SecurityLabel::new(0, "public"),
             policy: TrustDistancePolicy::new(0, 1), // read only at τ≤1
             capabilities: vec![],
@@ -217,8 +226,8 @@ fn register_and_list_transforms() {
         name: "uppercase".to_string(),
         reversibility: Reversibility::Irreversible,
         min_output_label: SecurityLabel::new(0, "public"),
-        input_type: "String".to_string(),
-        output_type: "String".to_string(),
+        input_type: FieldType::STRING,
+        output_type: FieldType::STRING,
     };
     let id = api
         .register_transform(
@@ -245,8 +254,8 @@ fn derived_fold_via_transform() {
         name: "double".to_string(),
         reversibility: Reversibility::Irreversible,
         min_output_label: SecurityLabel::new(0, "public"),
-        input_type: "Integer".to_string(),
-        output_type: "Integer".to_string(),
+        input_type: FieldType::INTEGER,
+        output_type: FieldType::INTEGER,
     };
     api.register_transform(
         def,
@@ -274,6 +283,7 @@ fn derived_fold_via_transform() {
         fields: vec![FieldDef {
             name: "num".to_string(),
             value: FieldValue::Null,
+            field_type: FieldType::INTEGER,
             label: SecurityLabel::new(0, "public"),
             policy: TrustDistancePolicy::new(10, 10),
             capabilities: vec![],
@@ -475,6 +485,7 @@ fn history_requires_read_access() {
         fields: vec![FieldDef {
             name: "secret".to_string(),
             value: FieldValue::String("hidden".to_string()),
+            field_type: FieldType::STRING,
             label: SecurityLabel::new(0, "public"),
             policy: TrustDistancePolicy::new(0, 0), // owner only
             capabilities: vec![],

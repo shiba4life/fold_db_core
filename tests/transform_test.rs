@@ -9,7 +9,7 @@
 use fold_db_core::engine::FoldEngine;
 use fold_db_core::transform::{RegisteredTransform, Reversibility, TransformDef};
 use fold_db_core::types::{
-    AccessContext, Field, FieldValue, Fold, SecurityLabel, TrustDistancePolicy,
+    AccessContext, Field, FieldType, FieldValue, Fold, SecurityLabel, TrustDistancePolicy,
 };
 
 #[test]
@@ -24,8 +24,8 @@ fn reversible_transform_write_propagates_inverse() {
             name: "celsius_to_fahrenheit".to_string(),
             reversibility: Reversibility::Reversible,
             min_output_label: SecurityLabel::new(0, "public"),
-            input_type: "Float".to_string(),
-            output_type: "Float".to_string(),
+            input_type: FieldType::FLOAT,
+            output_type: FieldType::FLOAT,
         },
         Box::new(|val| match val {
             FieldValue::Float(c) => FieldValue::Float(c * 9.0 / 5.0 + 32.0),
@@ -45,6 +45,7 @@ fn reversible_transform_write_propagates_inverse() {
         vec![Field::new(
             "temperature",
             FieldValue::Float(100.0), // 100°C
+            FieldType::FLOAT,
             SecurityLabel::new(0, "public"),
             TrustDistancePolicy::new(10, 10),
         )],
@@ -55,6 +56,7 @@ fn reversible_transform_write_propagates_inverse() {
     let mut f_field = Field::new(
         "temperature",
         FieldValue::Null,
+        FieldType::FLOAT,
         SecurityLabel::new(0, "public"),
         TrustDistancePolicy::new(10, 10),
     );
@@ -101,8 +103,8 @@ fn irreversible_transform_rejects_writes() {
             name: "sha256".to_string(),
             reversibility: Reversibility::Irreversible,
             min_output_label: SecurityLabel::new(0, "public"),
-            input_type: "String".to_string(),
-            output_type: "String".to_string(),
+            input_type: FieldType::STRING,
+            output_type: FieldType::STRING,
         },
         Box::new(|val| match val {
             FieldValue::String(s) => FieldValue::String(format!("hash({s})")),
@@ -118,6 +120,7 @@ fn irreversible_transform_rejects_writes() {
         vec![Field::new(
             "name",
             FieldValue::String("Alice".to_string()),
+            FieldType::STRING,
             SecurityLabel::new(0, "public"),
             TrustDistancePolicy::new(10, 10),
         )],
@@ -127,6 +130,7 @@ fn irreversible_transform_rejects_writes() {
     let mut derived_field = Field::new(
         "name",
         FieldValue::Null,
+        FieldType::STRING,
         SecurityLabel::new(0, "public"),
         TrustDistancePolicy::new(10, 10),
     );
@@ -166,8 +170,8 @@ fn irreversible_transform_with_inverse_rejected_at_registration() {
             name: "bad".to_string(),
             reversibility: Reversibility::Irreversible,
             min_output_label: SecurityLabel::new(0, "public"),
-            input_type: "String".to_string(),
-            output_type: "String".to_string(),
+            input_type: FieldType::STRING,
+            output_type: FieldType::STRING,
         },
         Box::new(|v| v.clone()),
         Some(Box::new(|v| v.clone())), // invalid!
@@ -187,8 +191,8 @@ fn reversible_transform_without_inverse_rejected_at_registration() {
             name: "bad2".to_string(),
             reversibility: Reversibility::Reversible,
             min_output_label: SecurityLabel::new(0, "public"),
-            input_type: "String".to_string(),
-            output_type: "String".to_string(),
+            input_type: FieldType::STRING,
+            output_type: FieldType::STRING,
         },
         Box::new(|v| v.clone()),
         None, // must provide inverse for reversible!
@@ -209,8 +213,8 @@ fn transform_determinism_same_input_same_output() {
             name: "uppercase".to_string(),
             reversibility: Reversibility::Irreversible,
             min_output_label: SecurityLabel::new(0, "public"),
-            input_type: "String".to_string(),
-            output_type: "String".to_string(),
+            input_type: FieldType::STRING,
+            output_type: FieldType::STRING,
         },
         Box::new(|val| match val {
             FieldValue::String(s) => FieldValue::String(s.to_uppercase()),
@@ -226,6 +230,7 @@ fn transform_determinism_same_input_same_output() {
         vec![Field::new(
             "text",
             FieldValue::String("hello".to_string()),
+            FieldType::STRING,
             SecurityLabel::new(0, "public"),
             TrustDistancePolicy::new(10, 10),
         )],
@@ -235,6 +240,7 @@ fn transform_determinism_same_input_same_output() {
     let mut derived_field = Field::new(
         "text",
         FieldValue::Null,
+        FieldType::STRING,
         SecurityLabel::new(0, "public"),
         TrustDistancePolicy::new(10, 10),
     );
@@ -257,9 +263,9 @@ fn transform_determinism_same_input_same_output() {
 
 #[test]
 fn content_addressed_transform_id() {
-    let hash1 = TransformDef::content_hash("my_transform", "String", "Integer");
-    let hash2 = TransformDef::content_hash("my_transform", "String", "Integer");
-    let hash3 = TransformDef::content_hash("different", "String", "Integer");
+    let hash1 = TransformDef::content_hash("my_transform", &FieldType::STRING, &FieldType::INTEGER);
+    let hash2 = TransformDef::content_hash("my_transform", &FieldType::STRING, &FieldType::INTEGER);
+    let hash3 = TransformDef::content_hash("different", &FieldType::STRING, &FieldType::INTEGER);
 
     assert_eq!(hash1, hash2); // same inputs → same hash
     assert_ne!(hash1, hash3); // different inputs → different hash

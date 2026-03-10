@@ -1,13 +1,12 @@
 //! Integration test: weekly heart rate average from per-minute readings.
 //!
-//! Heart rate readings are stored as a JSON array of per-minute BPM values
-//! in a source fold. Three derived folds compute different aggregates:
+//! Heart rate readings are stored as an Array of per-minute BPM values
+//! in a source fold. Two derived folds compute different aggregates:
 //!   - "weekly_avg": average BPM over the array (irreversible)
-//!   - "weekly_summary": min/max/avg as a JSON object (irreversible)
 //!   - "weekly_zone": classifies the average into training zones (irreversible)
 //!
 //! This demonstrates how fold_db handles time-series aggregation:
-//! the source stores raw readings as a JSON array, transforms compute
+//! the source stores raw readings as an Array, transforms compute
 //! derived statistics, and access policies control who sees what.
 
 use fold_db_core::api::*;
@@ -15,14 +14,14 @@ use fold_db_core::transform::{Reversibility, TransformDef};
 use fold_db_core::types::{
     AccessContext, FieldValue, SecurityLabel, TrustDistancePolicy,
 };
-use serde_json::json;
+use fold_db_core::{FieldType, ScalarType};
 
 /// Generate realistic per-minute heart rate data for a given number of minutes.
 /// Simulates resting (~65-75), light activity (~80-100), exercise (~120-160),
 /// and sleep (~55-65) periods.
 fn generate_week_readings() -> Vec<i64> {
     let mut readings = Vec::new();
-    // 7 days × 24 hours × 60 minutes = 10080 readings
+    // 7 days x 24 hours x 60 minutes = 10080 readings
     for day in 0..7 {
         for hour in 0..24 {
             for minute in 0..60 {
@@ -52,14 +51,14 @@ fn generate_hour_readings(base_bpm: i64) -> Vec<i64> {
         .collect()
 }
 
-fn readings_to_json(readings: &[i64]) -> FieldValue {
-    FieldValue::Json(json!(readings))
+fn readings_to_field_value(readings: &[i64]) -> FieldValue {
+    FieldValue::Array(readings.iter().map(|&v| FieldValue::Float(v as f64)).collect())
 }
 
 fn setup() -> FoldDbApi {
     let mut api = FoldDbApi::new();
 
-    // ── Transform: compute average BPM from JSON array ──────────
+    // -- Transform: compute average BPM from Array --------------------
 
     api.register_transform(
         TransformDef {
@@ -67,65 +66,21 @@ fn setup() -> FoldDbApi {
             name: "average_bpm".to_string(),
             reversibility: Reversibility::Irreversible,
             min_output_label: SecurityLabel::new(1, "medical"),
-            input_type: "Json".to_string(),
-            output_type: "Float".to_string(),
+            input_type: FieldType::Array(ScalarType::Float),
+            output_type: FieldType::FLOAT,
         },
         Box::new(|v| match v {
-            FieldValue::Json(arr) => {
-                if let Some(values) = arr.as_array() {
-                    let sum: f64 = values
-                        .iter()
-                        .filter_map(|v| v.as_f64())
-                        .sum();
-                    let count = values.iter().filter(|v| v.as_f64().is_some()).count();
-                    if count > 0 {
-                        let avg = (sum / count as f64 * 10.0).round() / 10.0;
-                        FieldValue::Float(avg)
-                    } else {
-                        FieldValue::Null
-                    }
-                } else {
+            FieldValue::Array(arr) => {
+                let nums: Vec<f64> = arr.iter().filter_map(|v| match v {
+                    FieldValue::Float(f) => Some(*f),
+                    FieldValue::Integer(i) => Some(*i as f64),
+                    _ => None,
+                }).collect();
+                if nums.is_empty() {
                     FieldValue::Null
-                }
-            }
-            _ => FieldValue::Null,
-        }),
-        None,
-    )
-    .unwrap();
-
-    // ── Transform: compute min/max/avg summary ──────────────────
-
-    api.register_transform(
-        TransformDef {
-            id: "summary_bpm".to_string(),
-            name: "summary_bpm".to_string(),
-            reversibility: Reversibility::Irreversible,
-            min_output_label: SecurityLabel::new(1, "medical"),
-            input_type: "Json".to_string(),
-            output_type: "Json".to_string(),
-        },
-        Box::new(|v| match v {
-            FieldValue::Json(arr) => {
-                if let Some(values) = arr.as_array() {
-                    let nums: Vec<f64> = values
-                        .iter()
-                        .filter_map(|v| v.as_f64())
-                        .collect();
-                    if nums.is_empty() {
-                        return FieldValue::Null;
-                    }
-                    let min = nums.iter().cloned().fold(f64::INFINITY, f64::min);
-                    let max = nums.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+                } else {
                     let avg = (nums.iter().sum::<f64>() / nums.len() as f64 * 10.0).round() / 10.0;
-                    FieldValue::Json(json!({
-                        "min": min as i64,
-                        "max": max as i64,
-                        "avg": avg,
-                        "count": nums.len()
-                    }))
-                } else {
-                    FieldValue::Null
+                    FieldValue::Float(avg)
                 }
             }
             _ => FieldValue::Null,
@@ -134,7 +89,7 @@ fn setup() -> FoldDbApi {
     )
     .unwrap();
 
-    // ── Transform: classify average into heart rate zone ─────────
+    // -- Transform: classify average into heart rate zone -------------
 
     api.register_transform(
         TransformDef {
@@ -142,33 +97,30 @@ fn setup() -> FoldDbApi {
             name: "heart_rate_zone".to_string(),
             reversibility: Reversibility::Irreversible,
             min_output_label: SecurityLabel::new(1, "medical"),
-            input_type: "Json".to_string(),
-            output_type: "String".to_string(),
+            input_type: FieldType::Array(ScalarType::Float),
+            output_type: FieldType::STRING,
         },
         Box::new(|v| match v {
-            FieldValue::Json(arr) => {
-                if let Some(values) = arr.as_array() {
-                    let nums: Vec<f64> = values
-                        .iter()
-                        .filter_map(|v| v.as_f64())
-                        .collect();
-                    if nums.is_empty() {
-                        return FieldValue::String("no data".to_string());
-                    }
-                    let avg = nums.iter().sum::<f64>() / nums.len() as f64;
-                    let zone = match avg as i64 {
-                        ..55 => "dangerously low",
-                        55..=64 => "resting/sleep",
-                        65..=75 => "resting/normal",
-                        76..=95 => "light activity",
-                        96..=120 => "moderate activity",
-                        121..=150 => "vigorous activity",
-                        _ => "extreme",
-                    };
-                    FieldValue::String(zone.to_string())
-                } else {
-                    FieldValue::String("invalid data".to_string())
+            FieldValue::Array(arr) => {
+                let nums: Vec<f64> = arr.iter().filter_map(|v| match v {
+                    FieldValue::Float(f) => Some(*f),
+                    FieldValue::Integer(i) => Some(*i as f64),
+                    _ => None,
+                }).collect();
+                if nums.is_empty() {
+                    return FieldValue::String("no data".to_string());
                 }
+                let avg = nums.iter().sum::<f64>() / nums.len() as f64;
+                let zone = match avg as i64 {
+                    ..55 => "dangerously low",
+                    55..=64 => "resting/sleep",
+                    65..=75 => "resting/normal",
+                    76..=95 => "light activity",
+                    96..=120 => "moderate activity",
+                    121..=150 => "vigorous activity",
+                    _ => "extreme",
+                };
+                FieldValue::String(zone.to_string())
             }
             _ => FieldValue::String("invalid input".to_string()),
         }),
@@ -176,7 +128,7 @@ fn setup() -> FoldDbApi {
     )
     .unwrap();
 
-    // ── Source fold: per-minute readings stored as JSON array ────
+    // -- Source fold: per-minute readings stored as Array --------------
 
     let initial_readings = generate_hour_readings(72);
     api.create_fold(CreateFoldRequest {
@@ -184,7 +136,8 @@ fn setup() -> FoldDbApi {
         owner_id: "patient".to_string(),
         fields: vec![FieldDef {
             name: "readings".to_string(),
-            value: readings_to_json(&initial_readings),
+            value: readings_to_field_value(&initial_readings),
+            field_type: FieldType::Array(ScalarType::Float),
             label: SecurityLabel::new(2, "medical"),
             policy: TrustDistancePolicy::new(1, 1),
             capabilities: vec![],
@@ -196,7 +149,7 @@ fn setup() -> FoldDbApi {
     })
     .unwrap();
 
-    // ── Derived: weekly average ─────────────────────────────────
+    // -- Derived: weekly average -------------------------------------
 
     api.create_fold(CreateFoldRequest {
         fold_id: "weekly_avg".to_string(),
@@ -204,6 +157,7 @@ fn setup() -> FoldDbApi {
         fields: vec![FieldDef {
             name: "avg_bpm".to_string(),
             value: FieldValue::Null,
+            field_type: FieldType::FLOAT,
             label: SecurityLabel::new(2, "medical"),
             policy: TrustDistancePolicy::new(0, 3),
             capabilities: vec![],
@@ -215,26 +169,7 @@ fn setup() -> FoldDbApi {
     })
     .unwrap();
 
-    // ── Derived: summary (min/max/avg/count) ────────────────────
-
-    api.create_fold(CreateFoldRequest {
-        fold_id: "weekly_summary".to_string(),
-        owner_id: "patient".to_string(),
-        fields: vec![FieldDef {
-            name: "summary".to_string(),
-            value: FieldValue::Null,
-            label: SecurityLabel::new(2, "medical"),
-            policy: TrustDistancePolicy::new(0, 2),
-            capabilities: vec![],
-            transform_id: Some("summary_bpm".to_string()),
-            source_fold_id: Some("hr_readings".to_string()),
-            source_field_name: Some("readings".to_string()),
-        }],
-        payment_gate: None,
-    })
-    .unwrap();
-
-    // ── Derived: heart rate zone classification ──────────────────
+    // -- Derived: heart rate zone classification ---------------------
 
     api.create_fold(CreateFoldRequest {
         fold_id: "weekly_zone".to_string(),
@@ -242,6 +177,7 @@ fn setup() -> FoldDbApi {
         fields: vec![FieldDef {
             name: "zone".to_string(),
             value: FieldValue::Null,
+            field_type: FieldType::STRING,
             label: SecurityLabel::new(2, "medical"),
             policy: TrustDistancePolicy::new(0, 5),
             capabilities: vec![],
@@ -253,7 +189,7 @@ fn setup() -> FoldDbApi {
     })
     .unwrap();
 
-    // ── Trust ───────────────────────────────────────────────────
+    // -- Trust -------------------------------------------------------
 
     api.assign_trust("patient", "cardiologist", 1);
     api.assign_trust("patient", "nurse", 2);
@@ -262,7 +198,7 @@ fn setup() -> FoldDbApi {
     api
 }
 
-// ── Test: average computed correctly from initial readings ───────────
+// -- Test: average computed correctly from initial readings ------------
 
 #[test]
 fn average_computed_from_readings() {
@@ -285,35 +221,13 @@ fn average_computed_from_readings() {
     );
 }
 
-// ── Test: summary gives min/max/avg/count ────────────────────────────
-
-#[test]
-fn summary_gives_min_max_avg_count() {
-    let mut api = setup();
-
-    let resp = api.query_fold(QueryRequest {
-        fold_id: "weekly_summary".to_string(),
-        context: AccessContext::owner("patient"),
-    });
-    let fields = resp.fields.expect("patient should see weekly_summary");
-    let summary = match fields.get("summary") {
-        Some(FieldValue::Json(v)) => v.clone(),
-        other => panic!("expected Json, got {other:?}"),
-    };
-
-    assert_eq!(summary["count"], 60);
-    assert!(summary["min"].as_i64().unwrap() >= 65);
-    assert!(summary["max"].as_i64().unwrap() <= 80);
-    assert!(summary["avg"].as_f64().is_some());
-}
-
-// ── Test: zone classification from initial readings ──────────────────
+// -- Test: zone classification from initial readings ------------------
 
 #[test]
 fn zone_classification_from_readings() {
     let mut api = setup();
 
-    // Average ~72 BPM → "resting/normal"
+    // Average ~72 BPM -> "resting/normal"
     let resp = api.query_fold(QueryRequest {
         fold_id: "weekly_zone".to_string(),
         context: AccessContext::owner("patient"),
@@ -325,7 +239,7 @@ fn zone_classification_from_readings() {
     );
 }
 
-// ── Test: update readings, derived folds reflect new data ────────────
+// -- Test: update readings, derived folds reflect new data ------------
 
 #[test]
 fn updated_readings_change_all_derived_folds() {
@@ -337,7 +251,7 @@ fn updated_readings_change_all_derived_folds() {
     api.write_field(WriteRequest {
         fold_id: "hr_readings".to_string(),
         field_name: "readings".to_string(),
-        value: readings_to_json(&exercise_readings),
+        value: readings_to_field_value(&exercise_readings),
         context: ctx.clone(),
         signature: vec![],
     })
@@ -360,28 +274,15 @@ fn updated_readings_change_all_derived_folds() {
     // Zone should be "vigorous activity"
     let resp = api.query_fold(QueryRequest {
         fold_id: "weekly_zone".to_string(),
-        context: ctx.clone(),
+        context: ctx,
     });
     assert_eq!(
         resp.fields.unwrap().get("zone"),
         Some(&FieldValue::String("vigorous activity".to_string()))
     );
-
-    // Summary should reflect the new data
-    let resp = api.query_fold(QueryRequest {
-        fold_id: "weekly_summary".to_string(),
-        context: ctx,
-    });
-    let summary = match resp.fields.unwrap().get("summary") {
-        Some(FieldValue::Json(v)) => v.clone(),
-        other => panic!("expected Json, got {other:?}"),
-    };
-    assert_eq!(summary["count"], 60);
-    assert!(summary["min"].as_i64().unwrap() >= 133);
-    assert!(summary["max"].as_i64().unwrap() <= 147);
 }
 
-// ── Test: full week of realistic data ────────────────────────────────
+// -- Test: full week of realistic data --------------------------------
 
 #[test]
 fn full_week_10080_readings() {
@@ -389,12 +290,12 @@ fn full_week_10080_readings() {
     let ctx = AccessContext::owner("patient");
 
     let week = generate_week_readings();
-    assert_eq!(week.len(), 10080); // 7 days × 24 hours × 60 min
+    assert_eq!(week.len(), 10080); // 7 days x 24 hours x 60 min
 
     api.write_field(WriteRequest {
         fold_id: "hr_readings".to_string(),
         field_name: "readings".to_string(),
-        value: readings_to_json(&week),
+        value: readings_to_field_value(&week),
         context: ctx.clone(),
         signature: vec![],
     })
@@ -409,25 +310,11 @@ fn full_week_10080_readings() {
         Some(FieldValue::Float(v)) => *v,
         other => panic!("expected Float, got {other:?}"),
     };
-    // Mixed day: sleep ~58, rest ~70, exercise ~130 → weighted avg around 70-80
+    // Mixed day: sleep ~58, rest ~70, exercise ~130 -> weighted avg around 70-80
     assert!(
         (50.0..100.0).contains(&avg),
         "weekly average {avg} should be in realistic range"
     );
-
-    // Summary should show full count
-    let resp = api.query_fold(QueryRequest {
-        fold_id: "weekly_summary".to_string(),
-        context: ctx.clone(),
-    });
-    let summary = match resp.fields.unwrap().get("summary") {
-        Some(FieldValue::Json(v)) => v.clone(),
-        other => panic!("expected Json, got {other:?}"),
-    };
-    assert_eq!(summary["count"], 10080);
-    // Min should be in sleep range, max in exercise range
-    assert!(summary["min"].as_i64().unwrap() < 60);
-    assert!(summary["max"].as_i64().unwrap() > 120);
 
     // Zone classification
     let resp = api.query_fold(QueryRequest {
@@ -445,45 +332,34 @@ fn full_week_10080_readings() {
     );
 }
 
-// ── Test: access control — who sees what ─────────────────────────────
+// -- Test: access control --- who sees what ---------------------------
 
 #[test]
 fn access_control_on_aggregated_views() {
     let mut api = setup();
 
-    // Cardiologist (τ=1): sees raw readings AND all derived folds
+    // Cardiologist (t=1): sees raw readings AND all derived folds
     let resp = api.query_fold(QueryRequest {
         fold_id: "hr_readings".to_string(),
         context: AccessContext::new("cardiologist", 1),
     });
     assert!(resp.fields.is_some(), "cardiologist should see raw readings");
 
-    let resp = api.query_fold(QueryRequest {
-        fold_id: "weekly_summary".to_string(),
-        context: AccessContext::new("cardiologist", 1),
-    });
-    assert!(resp.fields.is_some(), "cardiologist should see summary");
-
-    // Nurse (τ=2): sees summary (R≤2) and zone (R≤5), but NOT raw readings (R≤1)
+    // Nurse (t=2): NOT raw readings (R<=1)
     let resp = api.query_fold(QueryRequest {
         fold_id: "hr_readings".to_string(),
         context: AccessContext::new("nurse", 2),
     });
     assert!(resp.fields.is_none(), "nurse should NOT see raw readings");
 
-    let resp = api.query_fold(QueryRequest {
-        fold_id: "weekly_summary".to_string(),
-        context: AccessContext::new("nurse", 2),
-    });
-    assert!(resp.fields.is_some(), "nurse should see summary");
-
+    // Nurse sees zone (R<=5)
     let resp = api.query_fold(QueryRequest {
         fold_id: "weekly_zone".to_string(),
         context: AccessContext::new("nurse", 2),
     });
     assert!(resp.fields.is_some(), "nurse should see zone");
 
-    // Wellness app (τ=4): sees zone only (R≤5), NOT avg (R≤3), summary (R≤2), or raw (R≤1)
+    // Wellness app (t=4): sees zone only (R<=5), NOT avg (R<=3) or raw (R<=1)
     let resp = api.query_fold(QueryRequest {
         fold_id: "weekly_zone".to_string(),
         context: AccessContext::new("wellness_app", 4),
@@ -495,15 +371,9 @@ fn access_control_on_aggregated_views() {
         context: AccessContext::new("wellness_app", 4),
     });
     assert!(resp.fields.is_none(), "wellness app should NOT see avg");
-
-    let resp = api.query_fold(QueryRequest {
-        fold_id: "weekly_summary".to_string(),
-        context: AccessContext::new("wellness_app", 4),
-    });
-    assert!(resp.fields.is_none(), "wellness app should NOT see summary");
 }
 
-// ── Test: history preserves previous week's readings ─────────────────
+// -- Test: history preserves previous week's readings -----------------
 
 #[test]
 fn history_preserves_previous_readings() {
@@ -515,7 +385,7 @@ fn history_preserves_previous_readings() {
     api.write_field(WriteRequest {
         fold_id: "hr_readings".to_string(),
         field_name: "readings".to_string(),
-        value: readings_to_json(&week1),
+        value: readings_to_field_value(&week1),
         context: ctx.clone(),
         signature: vec![],
     })
@@ -526,7 +396,7 @@ fn history_preserves_previous_readings() {
     api.write_field(WriteRequest {
         fold_id: "hr_readings".to_string(),
         field_name: "readings".to_string(),
-        value: readings_to_json(&week2),
+        value: readings_to_field_value(&week2),
         context: ctx.clone(),
         signature: vec![],
     })

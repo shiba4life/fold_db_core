@@ -8,7 +8,7 @@
 
 use fold_db_core::engine::FoldEngine;
 use fold_db_core::types::{
-    AccessContext, Field, FieldValue, Fold, SecurityLabel, TrustDistancePolicy,
+    AccessContext, Field, FieldType, FieldValue, Fold, SecurityLabel, TrustDistancePolicy,
 };
 
 fn setup_engine_with_writable_fold(fold_id: &str) -> FoldEngine {
@@ -19,6 +19,7 @@ fn setup_engine_with_writable_fold(fold_id: &str) -> FoldEngine {
         vec![Field::new(
             "data",
             FieldValue::String("v0".to_string()),
+            FieldType::STRING,
             SecurityLabel::new(0, "public"),
             TrustDistancePolicy::new(10, 10),
         )],
@@ -158,12 +159,14 @@ fn total_entries_across_fields() {
             Field::new(
                 "a",
                 FieldValue::Integer(0),
+                FieldType::INTEGER,
                 SecurityLabel::new(0, "public"),
                 TrustDistancePolicy::new(10, 10),
             ),
             Field::new(
                 "b",
                 FieldValue::Integer(0),
+                FieldType::INTEGER,
                 SecurityLabel::new(0, "public"),
                 TrustDistancePolicy::new(10, 10),
             ),

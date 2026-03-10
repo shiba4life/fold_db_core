@@ -8,8 +8,8 @@
 
 use fold_db_core::engine::FoldEngine;
 use fold_db_core::types::{
-    AccessContext, CapabilityConstraint, CapabilityKind, Field, FieldValue, Fold, SecurityLabel,
-    TrustDistancePolicy,
+    AccessContext, CapabilityConstraint, CapabilityKind, Field, FieldType, FieldValue, Fold,
+    SecurityLabel, TrustDistancePolicy,
 };
 
 fn make_key(id: u8) -> Vec<u8> {
@@ -24,6 +24,7 @@ fn read_capability_grants_access() {
     let mut field = Field::new(
         "secret",
         FieldValue::String("top secret".to_string()),
+        FieldType::STRING,
         SecurityLabel::new(3, "classified"),
         TrustDistancePolicy::new(0, 10), // wide trust for reads
     );
@@ -54,6 +55,7 @@ fn missing_capability_key_denies_access() {
     let mut field = Field::new(
         "secret",
         FieldValue::String("classified".to_string()),
+        FieldType::STRING,
         SecurityLabel::new(1, "secret"),
         TrustDistancePolicy::new(0, 10),
     );
@@ -81,6 +83,7 @@ fn read_capability_quota_decrements() {
     let mut field = Field::new(
         "data",
         FieldValue::String("value".to_string()),
+        FieldType::STRING,
         SecurityLabel::new(1, "normal"),
         TrustDistancePolicy::new(0, 10),
     );
@@ -113,6 +116,7 @@ fn write_capability_quota_decrements() {
     let mut field = Field::new(
         "data",
         FieldValue::String("original".to_string()),
+        FieldType::STRING,
         SecurityLabel::new(1, "normal"),
         TrustDistancePolicy::new(10, 10), // wide trust
     );
@@ -159,6 +163,7 @@ fn trust_distance_and_capability_are_conjunctive() {
     let mut field = Field::new(
         "data",
         FieldValue::String("secret".to_string()),
+        FieldType::STRING,
         SecurityLabel::new(1, "normal"),
         TrustDistancePolicy::new(0, 1), // only trust ≤ 1 can read
     );
@@ -197,6 +202,7 @@ fn no_capability_constraints_means_no_key_needed() {
     let field = Field::new(
         "public_data",
         FieldValue::String("hello".to_string()),
+        FieldType::STRING,
         SecurityLabel::new(0, "public"),
         TrustDistancePolicy::new(5, 5),
     );

@@ -8,4 +8,4 @@ pub use context::AccessContext;
 pub use field::{CapabilityConstraint, CapabilityKind, Field, TrustDistancePolicy};
 pub use fold::{Fold, FoldId};
 pub use security_label::SecurityLabel;
-pub use value::FieldValue;
+pub use value::{FieldType, FieldValue, ScalarType};

@@ -15,7 +15,7 @@ use fold_db_core::access::TrustGraph;
 use fold_db_core::engine::FoldEngine;
 use fold_db_core::transform::{RegisteredTransform, Reversibility, TransformDef};
 use fold_db_core::types::{
-    AccessContext, Field, FieldValue, Fold, SecurityLabel, TrustDistancePolicy,
+    AccessContext, Field, FieldType, FieldValue, Fold, SecurityLabel, TrustDistancePolicy,
 };
 
 fn setup_hospital_engine() -> FoldEngine {
@@ -35,8 +35,8 @@ fn setup_hospital_engine() -> FoldEngine {
             name: "irreversible_hash".to_string(),
             reversibility: Reversibility::Irreversible,
             min_output_label: SecurityLabel::new(1, "PII"),
-            input_type: "String".to_string(),
-            output_type: "String".to_string(),
+            input_type: FieldType::STRING,
+            output_type: FieldType::STRING,
         },
         Box::new(|val| match val {
             FieldValue::String(s) => {
@@ -58,18 +58,21 @@ fn setup_hospital_engine() -> FoldEngine {
             Field::new(
                 "name",
                 FieldValue::String("Alice Johnson".to_string()),
+                FieldType::STRING,
                 SecurityLabel::new(2, "PII"),
                 TrustDistancePolicy::new(1, 1),
             ),
             Field::new(
                 "diagnosis",
                 FieldValue::String("Type 2 Diabetes".to_string()),
+                FieldType::STRING,
                 SecurityLabel::new(2, "medical"),
                 TrustDistancePolicy::new(1, 1),
             ),
             Field::new(
                 "lab_results",
                 FieldValue::String("HbA1c: 7.2%".to_string()),
+                FieldType::STRING,
                 SecurityLabel::new(2, "medical"),
                 TrustDistancePolicy::new(1, 1),
             ),
@@ -81,6 +84,7 @@ fn setup_hospital_engine() -> FoldEngine {
     let mut name_field = Field::new(
         "name",
         FieldValue::Null, // derived
+        FieldType::STRING,
         SecurityLabel::new(2, "PII"),
         TrustDistancePolicy::new(0, 3),
     );
@@ -95,12 +99,14 @@ fn setup_hospital_engine() -> FoldEngine {
             Field::new(
                 "diagnosis",
                 FieldValue::String("Type 2 Diabetes".to_string()),
+                FieldType::STRING,
                 SecurityLabel::new(2, "medical"),
                 TrustDistancePolicy::new(0, 3),
             ),
             Field::new(
                 "lab_results",
                 FieldValue::String("HbA1c: 7.2%".to_string()),
+                FieldType::STRING,
                 SecurityLabel::new(2, "medical"),
                 TrustDistancePolicy::new(0, 3),
             ),
