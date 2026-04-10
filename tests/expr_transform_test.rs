@@ -13,7 +13,7 @@ use fold_db_core::api::*;
 use fold_db_core::transform::expr::{RangeLabel, TransformExpr};
 use fold_db_core::transform::{Reversibility, TransformDef};
 use fold_db_core::types::{
-    AccessContext, FieldValue, SecurityLabel, TrustDistancePolicy,
+    AccessContext, FieldAccessPolicy, FieldValue, SecurityLabel, TrustTier,
 };
 use serde_json::json;
 
@@ -331,7 +331,7 @@ fn register_and_use_expression_transform_via_api() {
             name: "bpm".to_string(),
             value: FieldValue::Json(json!([72, 74, 68, 70, 76])),
             label: SecurityLabel::new(2, "medical"),
-            policy: TrustDistancePolicy::new(1, 1),
+            policy: FieldAccessPolicy::new(TrustTier::Inner, TrustTier::Inner),
             capabilities: vec![],
             transform_id: None,
             source_fold_id: None,
@@ -349,7 +349,7 @@ fn register_and_use_expression_transform_via_api() {
             name: "avg_bpm".to_string(),
             value: FieldValue::Null,
             label: SecurityLabel::new(2, "medical"),
-            policy: TrustDistancePolicy::new(0, 5),
+            policy: FieldAccessPolicy::new(TrustTier::Owner, TrustTier::Outer),
             capabilities: vec![],
             transform_id: Some("expr_avg".to_string()),
             source_fold_id: Some("readings".to_string()),
@@ -367,7 +367,7 @@ fn register_and_use_expression_transform_via_api() {
             name: "status".to_string(),
             value: FieldValue::Null,
             label: SecurityLabel::new(2, "medical"),
-            policy: TrustDistancePolicy::new(0, 10),
+            policy: FieldAccessPolicy::new(TrustTier::Owner, TrustTier::Public),
             capabilities: vec![],
             transform_id: Some("expr_classify".to_string()),
             source_fold_id: Some("readings".to_string()),
@@ -377,13 +377,13 @@ fn register_and_use_expression_transform_via_api() {
     })
     .unwrap();
 
-    api.assign_trust("patient", "doctor", 1);
-    api.assign_trust("patient", "app", 8);
+    api.assign_trust("patient", "doctor", TrustTier::Inner);
+    api.assign_trust("patient", "app", TrustTier::Public);
 
     // Doctor sees average: (72+74+68+70+76)/5 = 72.0
     let resp = api.query_fold(QueryRequest {
         fold_id: "avg_view".to_string(),
-        context: AccessContext::new("doctor", 1),
+        context: AccessContext::remote_single("doctor", "personal", TrustTier::Inner),
     });
     assert_eq!(
         resp.fields.unwrap().get("avg_bpm"),
@@ -393,7 +393,7 @@ fn register_and_use_expression_transform_via_api() {
     // App sees status: avg 72 → "normal"
     let resp = api.query_fold(QueryRequest {
         fold_id: "status_view".to_string(),
-        context: AccessContext::new("app", 8),
+        context: AccessContext::remote_single("app", "personal", TrustTier::Public),
     });
     assert_eq!(
         resp.fields.unwrap().get("status"),
@@ -457,7 +457,7 @@ fn reversible_expression_transform() {
             name: "amount".to_string(),
             value: FieldValue::Float(80000.0),
             label: SecurityLabel::new(0, "public"),
-            policy: TrustDistancePolicy::new(10, 10),
+            policy: FieldAccessPolicy::new(TrustTier::Public, TrustTier::Public),
             capabilities: vec![],
             transform_id: None,
             source_fold_id: None,
@@ -475,7 +475,7 @@ fn reversible_expression_transform() {
             name: "amount".to_string(),
             value: FieldValue::Null,
             label: SecurityLabel::new(0, "public"),
-            policy: TrustDistancePolicy::new(10, 10),
+            policy: FieldAccessPolicy::new(TrustTier::Public, TrustTier::Public),
             capabilities: vec![],
             transform_id: Some("usd_eur".to_string()),
             source_fold_id: Some("salary_usd".to_string()),
@@ -588,7 +588,7 @@ fn multi_week_trend_via_expressions() {
                 "2026-W12": [65, 63, 67, 61, 64],
             })),
             label: SecurityLabel::new(2, "medical"),
-            policy: TrustDistancePolicy::new(1, 1),
+            policy: FieldAccessPolicy::new(TrustTier::Inner, TrustTier::Inner),
             capabilities: vec![],
             transform_id: None,
             source_fold_id: None,
@@ -606,7 +606,7 @@ fn multi_week_trend_via_expressions() {
             name: "averages".to_string(),
             value: FieldValue::Null,
             label: SecurityLabel::new(2, "medical"),
-            policy: TrustDistancePolicy::new(0, 3),
+            policy: FieldAccessPolicy::new(TrustTier::Owner, TrustTier::Trusted),
             capabilities: vec![],
             transform_id: Some("all_avgs_expr".to_string()),
             source_fold_id: Some("hr_data".to_string()),
@@ -624,7 +624,7 @@ fn multi_week_trend_via_expressions() {
             name: "trend".to_string(),
             value: FieldValue::Null,
             label: SecurityLabel::new(2, "medical"),
-            policy: TrustDistancePolicy::new(0, 5),
+            policy: FieldAccessPolicy::new(TrustTier::Owner, TrustTier::Outer),
             capabilities: vec![],
             transform_id: Some("trend_expr".to_string()),
             source_fold_id: Some("hr_data".to_string()),
@@ -642,7 +642,7 @@ fn multi_week_trend_via_expressions() {
             name: "latest_avg".to_string(),
             value: FieldValue::Null,
             label: SecurityLabel::new(2, "medical"),
-            policy: TrustDistancePolicy::new(0, 3),
+            policy: FieldAccessPolicy::new(TrustTier::Owner, TrustTier::Trusted),
             capabilities: vec![],
             transform_id: Some("latest_avg_expr".to_string()),
             source_fold_id: Some("hr_data".to_string()),

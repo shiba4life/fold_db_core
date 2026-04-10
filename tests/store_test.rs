@@ -8,7 +8,7 @@
 
 use fold_db_core::engine::FoldEngine;
 use fold_db_core::types::{
-    AccessContext, Field, FieldValue, Fold, SecurityLabel, TrustDistancePolicy,
+    AccessContext, Field, FieldAccessPolicy, FieldValue, Fold, SecurityLabel, TrustTier,
 };
 
 fn setup_engine_with_writable_fold(fold_id: &str) -> FoldEngine {
@@ -20,7 +20,7 @@ fn setup_engine_with_writable_fold(fold_id: &str) -> FoldEngine {
             "data",
             FieldValue::String("v0".to_string()),
             SecurityLabel::new(0, "public"),
-            TrustDistancePolicy::new(10, 10),
+            FieldAccessPolicy::new(TrustTier::Public, TrustTier::Public),
         )],
     );
     engine.register_fold(fold).unwrap();
@@ -131,9 +131,9 @@ fn unwritten_field_returns_none() {
 #[test]
 fn store_entries_have_writer_id() {
     let mut engine = setup_engine_with_writable_fold("s5");
-    engine.assign_trust("owner", "alice", 1);
+    engine.assign_trust("owner", "alice", TrustTier::Inner);
 
-    let ctx = AccessContext::new("alice", 1);
+    let ctx = AccessContext::remote_single("alice", "personal", TrustTier::Inner);
     engine
         .write(
             "s5",
@@ -159,13 +159,13 @@ fn total_entries_across_fields() {
                 "a",
                 FieldValue::Integer(0),
                 SecurityLabel::new(0, "public"),
-                TrustDistancePolicy::new(10, 10),
+                FieldAccessPolicy::new(TrustTier::Public, TrustTier::Public),
             ),
             Field::new(
                 "b",
                 FieldValue::Integer(0),
                 SecurityLabel::new(0, "public"),
-                TrustDistancePolicy::new(10, 10),
+                FieldAccessPolicy::new(TrustTier::Public, TrustTier::Public),
             ),
         ],
     );

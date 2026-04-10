@@ -6,13 +6,13 @@ use crate::access::{self, AccessDecision, TrustGraph};
 use crate::audit::{AuditEventKind, AuditLog};
 use crate::registry::FoldRegistry;
 use crate::store::{AppendOnlyStore, StoreEntry};
-use crate::types::{AccessContext, FieldValue};
+use crate::types::{AccessContext, FieldValue, TrustTier};
 
 /// The result of evaluating a fold: either Just(projection) or Nothing.
 /// This implements the monadic semantics from Section 3.2:
-///   Fold[a] = C → Maybe a
+///   Fold[a] = C -> Maybe a
 ///
-/// If all policies and payments are satisfied, returns Just(π).
+/// If all policies and payments are satisfied, returns Just(pi).
 /// If any check fails, returns Nothing. No partial results, no error
 /// messages that leak structure.
 pub type FoldResult = Option<HashMap<String, FieldValue>>;
@@ -54,8 +54,9 @@ impl FoldEngine {
         self.registry.register_transform(transform)
     }
 
-    pub fn assign_trust(&mut self, owner: &str, user: &str, distance: u64) {
-        self.trust_graph.assign_trust(owner, user, distance);
+    /// Assign a trust tier from owner to user.
+    pub fn assign_trust(&mut self, owner: &str, user: &str, tier: TrustTier) {
+        self.trust_graph.assign_trust(owner, user, tier);
     }
 
     pub fn registry_mut(&mut self) -> &mut FoldRegistry {
@@ -75,14 +76,14 @@ impl FoldEngine {
 
     /// Evaluate a fold under an access context (read query).
     ///
-    /// Returns Just(π) where π is the authorized projection, or Nothing.
+    /// Returns Just(pi) where pi is the authorized projection, or Nothing.
     /// The monadic semantics guarantee:
     /// - All-or-nothing: either all fields pass all checks, or Nothing
     /// - Clean failure propagation through composed folds
     /// - The audit service records the attempt regardless of outcome
     pub fn query(&mut self, fold_id: &str, context: &AccessContext) -> FoldResult {
-        // Resolve trust distance from the graph if not explicitly set
-        let context = self.resolve_trust_distance(fold_id, context);
+        // Resolve trust tier from the graph if not explicitly set
+        let context = self.resolve_trust_context(fold_id, context);
 
         let fold = match self.registry.get_fold(fold_id) {
             Some(f) => f.clone(),
@@ -110,7 +111,7 @@ impl FoldEngine {
             ) {
                 AccessDecision::Granted => {}
                 AccessDecision::Denied(reason) => {
-                    // All-or-nothing: any field failure → Nothing
+                    // All-or-nothing: any field failure -> Nothing
                     self.audit.record(
                         &context.user_id,
                         AuditEventKind::AccessDenied {
@@ -154,7 +155,7 @@ impl FoldEngine {
     }
 
     /// Write a value to a field in a fold.
-    /// Requires: write access (trust distance + capabilities + payment).
+    /// Requires: write access (trust tier + capabilities + payment).
     /// Every write carries a cryptographic signature binding the writer's identity.
     pub fn write(
         &mut self,
@@ -164,7 +165,7 @@ impl FoldEngine {
         context: &AccessContext,
         signature: Vec<u8>,
     ) -> Result<u64, WriteError> {
-        let context = self.resolve_trust_distance(fold_id, context);
+        let context = self.resolve_trust_context(fold_id, context);
 
         let fold = self
             .registry
@@ -266,7 +267,7 @@ impl FoldEngine {
     }
 
     /// Resolve a field's value, handling transforms and fold composition.
-    /// For derived fields: F_k = λC. F_{k-1}(C) >>= T_k
+    /// For derived fields: F_k = lambda C. F_{k-1}(C) >>= T_k
     /// If the source fold returns Nothing, this field also returns Nothing (monadic bind).
     fn resolve_field_value(
         &mut self,
@@ -319,15 +320,19 @@ impl FoldEngine {
         }
     }
 
-    /// Resolve trust distance from the trust graph if the context user
-    /// isn't the owner and we have a graph entry.
-    pub fn resolve_trust_distance(&self, fold_id: &str, context: &AccessContext) -> AccessContext {
+    /// Resolve trust context from the trust graph.
+    /// If the user has a trust tier assigned by the fold's owner, use it.
+    pub fn resolve_trust_context(&self, fold_id: &str, context: &AccessContext) -> AccessContext {
         let mut ctx = context.clone();
 
-        if let Some(fold) = self.registry.get_fold(fold_id)
-            && let Some(distance) = self.trust_graph.resolve(&ctx.user_id, &fold.owner_id)
-        {
-            ctx.trust_distance = distance;
+        if let Some(fold) = self.registry.get_fold(fold_id) {
+            if ctx.user_id == fold.owner_id {
+                ctx.is_owner = true;
+            } else if let Some(tier) = self.trust_graph.resolve(&ctx.user_id, &fold.owner_id) {
+                // Set the resolved tier as the "personal" domain tier
+                // This ensures effective_tier() picks it up
+                ctx.tiers.insert("personal".to_string(), tier);
+            }
         }
 
         ctx

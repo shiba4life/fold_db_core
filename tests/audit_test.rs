@@ -1,12 +1,12 @@
 //! Tests for the Audit Log (Section 7).
 //!
-//! Every access event — reads, writes, denials, payment transactions,
-//! trust changes — is recorded in the append-only audit log.
+//! Every access event -- reads, writes, denials, payment transactions,
+//! trust changes -- is recorded in the append-only audit log.
 //! Entries are timestamped and attributable to a user.
 
 use fold_db_core::engine::FoldEngine;
 use fold_db_core::types::{
-    AccessContext, Field, FieldValue, Fold, SecurityLabel, TrustDistancePolicy,
+    AccessContext, Field, FieldAccessPolicy, FieldValue, Fold, SecurityLabel, TrustTier,
 };
 
 #[test]
@@ -20,7 +20,7 @@ fn successful_read_is_audited() {
             "data",
             FieldValue::String("hello".to_string()),
             SecurityLabel::new(0, "public"),
-            TrustDistancePolicy::new(10, 10),
+            FieldAccessPolicy::new(TrustTier::Public, TrustTier::Public),
         )],
     );
     engine.register_fold(fold).unwrap();
@@ -45,13 +45,13 @@ fn denied_read_is_audited() {
             "secret",
             FieldValue::String("hidden".to_string()),
             SecurityLabel::new(0, "public"),
-            TrustDistancePolicy::new(0, 0), // owner only
+            FieldAccessPolicy::new(TrustTier::Owner, TrustTier::Owner), // owner only
         )],
     );
     engine.register_fold(fold).unwrap();
-    engine.assign_trust("owner", "stranger", 5);
+    engine.assign_trust("owner", "stranger", TrustTier::Outer);
 
-    let ctx = AccessContext::new("stranger", 5);
+    let ctx = AccessContext::remote_single("stranger", "personal", TrustTier::Outer);
     let result = engine.query("restricted", &ctx);
     assert!(result.is_none());
 
@@ -71,7 +71,7 @@ fn successful_write_is_audited() {
             "data",
             FieldValue::String("old".to_string()),
             SecurityLabel::new(0, "public"),
-            TrustDistancePolicy::new(10, 10),
+            FieldAccessPolicy::new(TrustTier::Public, TrustTier::Public),
         )],
     );
     engine.register_fold(fold).unwrap();
@@ -102,7 +102,7 @@ fn multiple_operations_accumulate() {
             "val",
             FieldValue::Integer(0),
             SecurityLabel::new(0, "public"),
-            TrustDistancePolicy::new(10, 10),
+            FieldAccessPolicy::new(TrustTier::Public, TrustTier::Public),
         )],
     );
     engine.register_fold(fold).unwrap();
@@ -129,15 +129,15 @@ fn events_filtered_by_user() {
             "data",
             FieldValue::String("hello".to_string()),
             SecurityLabel::new(0, "public"),
-            TrustDistancePolicy::new(10, 10),
+            FieldAccessPolicy::new(TrustTier::Public, TrustTier::Public),
         )],
     );
     engine.register_fold(fold).unwrap();
-    engine.assign_trust("owner", "alice", 1);
-    engine.assign_trust("owner", "bob", 2);
+    engine.assign_trust("owner", "alice", TrustTier::Inner);
+    engine.assign_trust("owner", "bob", TrustTier::Trusted);
 
-    let alice_ctx = AccessContext::new("alice", 1);
-    let bob_ctx = AccessContext::new("bob", 2);
+    let alice_ctx = AccessContext::remote_single("alice", "personal", TrustTier::Inner);
+    let bob_ctx = AccessContext::remote_single("bob", "personal", TrustTier::Trusted);
 
     engine.query("shared", &alice_ctx);
     engine.query("shared", &bob_ctx);

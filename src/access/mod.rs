@@ -6,7 +6,7 @@ pub use capability::check_capabilities;
 pub use payment::{check_payment, PaymentGate};
 pub use trust::TrustGraph;
 
-use crate::types::{AccessContext, Field};
+use crate::types::{AccessContext, Field, TrustTier};
 
 /// Result of an access check: all four layers must pass.
 #[derive(Debug)]
@@ -17,9 +17,9 @@ pub enum AccessDecision {
 
 #[derive(Debug)]
 pub enum AccessDenialReason {
-    TrustDistance {
-        required: u64,
-        actual: u64,
+    TrustTier {
+        required: TrustTier,
+        actual: TrustTier,
     },
     CapabilityMissing {
         field: String,
@@ -40,8 +40,8 @@ pub enum AccessDenialReason {
 impl std::fmt::Display for AccessDenialReason {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::TrustDistance { required, actual } => {
-                write!(f, "trust distance {actual} exceeds maximum {required}")
+            Self::TrustTier { required, actual } => {
+                write!(f, "trust tier {actual} is below required {required}")
             }
             Self::CapabilityMissing { field } => {
                 write!(f, "missing capability for field '{field}'")
@@ -67,11 +67,12 @@ pub fn check_read_access(
     fold_id: &str,
     payment_gate: Option<&PaymentGate>,
 ) -> AccessDecision {
-    // 1. Trust distance
-    if !field.policy.can_read(context.trust_distance) {
-        return AccessDecision::Denied(AccessDenialReason::TrustDistance {
-            required: field.policy.read_max,
-            actual: context.trust_distance,
+    // 1. Trust tier
+    let caller_tier = context.effective_tier();
+    if !field.policy.can_read(caller_tier) {
+        return AccessDecision::Denied(AccessDenialReason::TrustTier {
+            required: field.policy.min_read_tier,
+            actual: caller_tier,
         });
     }
 
@@ -101,11 +102,12 @@ pub fn check_write_access(
     fold_id: &str,
     payment_gate: Option<&PaymentGate>,
 ) -> AccessDecision {
-    // 1. Trust distance
-    if !field.policy.can_write(context.trust_distance) {
-        return AccessDecision::Denied(AccessDenialReason::TrustDistance {
-            required: field.policy.write_max,
-            actual: context.trust_distance,
+    // 1. Trust tier
+    let caller_tier = context.effective_tier();
+    if !field.policy.can_write(caller_tier) {
+        return AccessDecision::Denied(AccessDenialReason::TrustTier {
+            required: field.policy.min_write_tier,
+            actual: caller_tier,
         });
     }
 
