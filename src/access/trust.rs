@@ -1,19 +1,24 @@
 use std::collections::HashMap;
 
-/// Trust graph: manages trust distance τ(u, o) between users and data owners.
+use crate::types::TrustTier;
+
+/// Trust graph: manages trust tiers between users and data owners.
 ///
-/// Trust distance is additive: if owner assigns τ(a, o) = n and user a assigns
-/// τ(b, a) = m, then τ(b, o) = n + m by default. The owner may override any
-/// derived distance with an explicit assignment. Explicit assignments take
-/// precedence over all derived distances.
+/// Owner assigns a TrustTier to each user. The tier represents the level
+/// of trust the owner has in that user. Higher tiers grant more access.
 ///
-/// When multiple paths exist, the system uses the shortest path (minimum sum).
-/// Trust distances are resolved at evaluation time—no caching.
+/// For transitive trust: if owner assigns tier T to user A, and A assigns
+/// tier T2 to user B, then B's effective tier with respect to the owner
+/// is min(T, T2) (the weaker of the two).
+///
+/// Explicit overrides take precedence over derived tiers.
 pub struct TrustGraph {
-    /// Adjacency list: from_user -> [(to_user, distance)]
-    adjacency: HashMap<String, Vec<(String, u64)>>,
-    /// Explicit owner overrides: (user, owner) -> distance
-    overrides: HashMap<(String, String), u64>,
+    /// Direct trust assignments: from_user -> [(to_user, tier)]
+    adjacency: HashMap<String, Vec<(String, TrustTier)>>,
+    /// Explicit owner overrides: (user, owner) -> tier
+    overrides: HashMap<(String, String), TrustTier>,
+    /// Revoked users: (user, owner) -> true
+    revoked: HashMap<(String, String), bool>,
 }
 
 impl TrustGraph {
@@ -21,95 +26,106 @@ impl TrustGraph {
         Self {
             adjacency: HashMap::new(),
             overrides: HashMap::new(),
+            revoked: HashMap::new(),
         }
     }
 
-    /// Owner assigns trust distance to a user.
-    pub fn assign_trust(&mut self, owner: &str, user: &str, distance: u64) {
+    /// Owner assigns a trust tier to a user.
+    pub fn assign_trust(&mut self, owner: &str, user: &str, tier: TrustTier) {
         let neighbors = self.adjacency.entry(owner.to_string()).or_default();
-        // Update existing edge or insert new one
         if let Some(entry) = neighbors.iter_mut().find(|(to, _)| to == user) {
-            entry.1 = distance;
+            entry.1 = tier;
         } else {
-            neighbors.push((user.to_string(), distance));
+            neighbors.push((user.to_string(), tier));
         }
     }
 
-    /// Owner sets an explicit override for a user's trust distance.
-    /// This takes precedence over any derived distance.
-    pub fn set_override(&mut self, owner: &str, user: &str, distance: u64) {
+    /// Owner sets an explicit override for a user's trust tier.
+    pub fn set_override(&mut self, owner: &str, user: &str, tier: TrustTier) {
         self.overrides
-            .insert((user.to_string(), owner.to_string()), distance);
+            .insert((user.to_string(), owner.to_string()), tier);
     }
 
-    /// Remove an explicit override, reverting to derived distance.
+    /// Remove an explicit override, reverting to derived tier.
     pub fn remove_override(&mut self, owner: &str, user: &str) {
         self.overrides
             .remove(&(user.to_string(), owner.to_string()));
     }
 
-    /// Resolve the trust distance τ(user, owner).
+    /// Resolve the trust tier for a user with respect to an owner.
     /// Returns None if no path exists (user is completely unknown).
-    pub fn resolve(&self, user: &str, owner: &str) -> Option<u64> {
-        // Owner's distance to self is always 0
+    pub fn resolve(&self, user: &str, owner: &str) -> Option<TrustTier> {
+        // Owner's tier to self is always Owner
         if user == owner {
-            return Some(0);
+            return Some(TrustTier::Owner);
+        }
+
+        // Check if revoked
+        if self.revoked.get(&(user.to_string(), owner.to_string())).copied().unwrap_or(false) {
+            return None;
         }
 
         // Check explicit override first
-        if let Some(&d) = self
+        if let Some(&tier) = self
             .overrides
             .get(&(user.to_string(), owner.to_string()))
         {
-            return Some(d);
+            return Some(tier);
         }
 
-        // Dijkstra to find shortest path from owner to user
-        self.shortest_path(user, owner)
+        // Find the best tier via graph traversal
+        self.best_tier(user, owner)
     }
 
-    fn shortest_path(&self, user: &str, owner: &str) -> Option<u64> {
-        use std::cmp::Reverse;
-        use std::collections::BinaryHeap;
+    /// Find the best (highest) tier reachable from owner to user.
+    /// For transitive paths, the effective tier is min of tiers along the path.
+    /// Among all paths, we pick the one with the highest min (best access).
+    fn best_tier(&self, user: &str, owner: &str) -> Option<TrustTier> {
+        // BFS/DFS to find all paths and pick the best min-tier
+        use std::collections::HashSet;
 
-        let mut dist: HashMap<&str, u64> = HashMap::new();
-        let mut heap = BinaryHeap::new();
+        let mut best: Option<TrustTier> = None;
+        let mut visited = HashSet::new();
 
-        dist.insert(owner, 0);
-        heap.push(Reverse((0u64, owner)));
+        // Stack: (current_node, min_tier_on_path_so_far)
+        let mut stack: Vec<(&str, TrustTier)> = vec![(owner, TrustTier::Owner)];
 
-        while let Some(Reverse((cost, node))) = heap.pop() {
+        while let Some((node, path_min)) = stack.pop() {
             if node == user {
-                return Some(cost);
-            }
-
-            if cost > *dist.get(node).unwrap_or(&u64::MAX) {
+                best = Some(match best {
+                    Some(b) => std::cmp::max(b, path_min),
+                    None => path_min,
+                });
                 continue;
             }
 
-            // O(degree) neighbor lookup via adjacency list
+            if !visited.insert(node) {
+                continue;
+            }
+
             if let Some(neighbors) = self.adjacency.get(node) {
-                for (to, edge_cost) in neighbors {
-                    let next_cost = cost.saturating_add(*edge_cost);
-                    if next_cost < *dist.get(to.as_str()).unwrap_or(&u64::MAX) {
-                        dist.insert(to, next_cost);
-                        heap.push(Reverse((next_cost, to)));
+                for (to, tier) in neighbors {
+                    // Check if this user is revoked with respect to the owner
+                    if self.revoked.get(&(to.clone(), owner.to_string())).copied().unwrap_or(false) {
+                        continue;
                     }
+                    let new_min = std::cmp::min(path_min, *tier);
+                    stack.push((to, new_min));
                 }
             }
         }
 
-        None
+        best
     }
 
-    /// Revoke trust: remove the edge and set an override to MAX, effectively
-    /// denying access to this user. Anyone whose only path flows through this
-    /// user also loses access.
+    /// Revoke trust: remove the edge and mark user as revoked.
+    /// Anyone whose only path flows through this user also loses access.
     pub fn revoke(&mut self, owner: &str, user: &str) {
         if let Some(neighbors) = self.adjacency.get_mut(owner) {
             neighbors.retain(|(to, _)| to != user);
         }
-        self.set_override(owner, user, u64::MAX);
+        self.revoked
+            .insert((user.to_string(), owner.to_string()), true);
     }
 }
 

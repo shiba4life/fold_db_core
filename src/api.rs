@@ -16,11 +16,11 @@ use crate::transform::{
     InverseTransformFn, RegisteredTransform, TransformDef, TransformExpr, TransformFn,
 };
 use crate::types::{
-    AccessContext, CapabilityConstraint, Field, FieldValue, Fold, SecurityLabel,
-    TrustDistancePolicy,
+    AccessContext, CapabilityConstraint, Field, FieldAccessPolicy, FieldValue, Fold, SecurityLabel,
+    TrustTier,
 };
 
-// ── Request / Response types ────────────────────────────────────────────
+// -- Request / Response types ------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateFoldRequest {
@@ -35,7 +35,7 @@ pub struct FieldDef {
     pub name: String,
     pub value: FieldValue,
     pub label: SecurityLabel,
-    pub policy: TrustDistancePolicy,
+    pub policy: FieldAccessPolicy,
     #[serde(default)]
     pub capabilities: Vec<CapabilityConstraint>,
     pub transform_id: Option<String>,
@@ -109,7 +109,7 @@ pub struct AuditFilter {
     pub fold_id: Option<String>,
 }
 
-// ── Error type ──────────────────────────────────────────────────────────
+// -- Error type --------------------------------------------------------------
 
 #[derive(Debug, thiserror::Error)]
 pub enum ApiError {
@@ -127,7 +127,7 @@ pub enum ApiError {
     VersionNotFound(u64),
 }
 
-// ── API ─────────────────────────────────────────────────────────────────
+// -- API ---------------------------------------------------------------------
 
 pub struct FoldDbApi {
     engine: FoldEngine,
@@ -140,7 +140,7 @@ impl FoldDbApi {
         }
     }
 
-    // ── Fold operations ─────────────────────────────────────────────
+    // -- Fold operations -----------------------------------------------------
 
     pub fn create_fold(&mut self, req: CreateFoldRequest) -> Result<String, ApiError> {
         let fields: Vec<Field> = req.fields.into_iter().map(|fd| {
@@ -201,10 +201,10 @@ impl FoldDbApi {
             .collect()
     }
 
-    // ── Transform operations ────────────────────────────────────────
+    // -- Transform operations ------------------------------------------------
 
     /// Register a closure-based transform (for internal/testing use).
-    /// Closures are not serializable or verifiable — prefer `register_transform_expr`.
+    /// Closures are not serializable or verifiable -- prefer `register_transform_expr`.
     pub fn register_transform(
         &mut self,
         def: TransformDef,
@@ -239,31 +239,31 @@ impl FoldDbApi {
             .collect()
     }
 
-    // ── Trust operations ────────────────────────────────────────────
+    // -- Trust operations ----------------------------------------------------
 
-    pub fn assign_trust(&mut self, owner: &str, user: &str, distance: u64) {
-        self.engine.trust_graph.assign_trust(owner, user, distance);
+    pub fn assign_trust(&mut self, owner: &str, user: &str, tier: TrustTier) {
+        self.engine.trust_graph.assign_trust(owner, user, tier);
     }
 
     pub fn revoke_trust(&mut self, owner: &str, user: &str) {
         self.engine.trust_graph.revoke(owner, user);
     }
 
-    pub fn set_trust_override(&mut self, owner: &str, user: &str, distance: u64) {
+    pub fn set_trust_override(&mut self, owner: &str, user: &str, tier: TrustTier) {
         self.engine
             .trust_graph
-            .set_override(owner, user, distance);
+            .set_override(owner, user, tier);
     }
 
     pub fn remove_trust_override(&mut self, owner: &str, user: &str) {
         self.engine.trust_graph.remove_override(owner, user);
     }
 
-    pub fn resolve_trust(&self, user: &str, owner: &str) -> Option<u64> {
+    pub fn resolve_trust(&self, user: &str, owner: &str) -> Option<TrustTier> {
         self.engine.trust_graph.resolve(user, owner)
     }
 
-    // ── History & Rollback ──────────────────────────────────────────
+    // -- History & Rollback --------------------------------------------------
 
     pub fn get_field_history(
         &mut self,
@@ -316,7 +316,7 @@ impl FoldDbApi {
         Ok(WriteResponse { version })
     }
 
-    // ── Audit ───────────────────────────────────────────────────────
+    // -- Audit ---------------------------------------------------------------
 
     pub fn get_audit_events(&self, filter: AuditFilter) -> Vec<AuditEvent> {
         match (&filter.user_id, &filter.fold_id) {
@@ -356,7 +356,7 @@ impl FoldDbApi {
         }
     }
 
-    // ── Internal helpers ────────────────────────────────────────────
+    // -- Internal helpers ----------------------------------------------------
 
     /// Check that the caller has read access to the specified field.
     /// Used to gate history/version endpoints.
@@ -412,7 +412,7 @@ impl FoldDbApi {
         field_name: &str,
         context: &AccessContext,
     ) -> Result<(Fold, AccessContext), ApiError> {
-        let context = self.engine.resolve_trust_distance(fold_id, context);
+        let context = self.engine.resolve_trust_context(fold_id, context);
 
         let fold = self
             .engine

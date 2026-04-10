@@ -10,7 +10,7 @@
 use fold_db_core::api::*;
 use fold_db_core::transform::{Reversibility, TransformDef};
 use fold_db_core::types::{
-    AccessContext, FieldValue, SecurityLabel, TrustDistancePolicy,
+    AccessContext, FieldAccessPolicy, FieldValue, SecurityLabel, TrustTier,
 };
 
 fn setup() -> FoldDbApi {
@@ -72,7 +72,7 @@ fn setup() -> FoldDbApi {
                 name: "bpm".to_string(),
                 value: FieldValue::Integer(72),
                 label: SecurityLabel::new(2, "medical"),
-                policy: TrustDistancePolicy::new(1, 1),
+                policy: FieldAccessPolicy::new(TrustTier::Inner, TrustTier::Inner),
                 capabilities: vec![],
                 transform_id: None,
                 source_fold_id: None,
@@ -82,7 +82,7 @@ fn setup() -> FoldDbApi {
                 name: "patient_name".to_string(),
                 value: FieldValue::String("Alice Johnson".to_string()),
                 label: SecurityLabel::new(2, "PII"),
-                policy: TrustDistancePolicy::new(0, 1),
+                policy: FieldAccessPolicy::new(TrustTier::Owner, TrustTier::Inner),
                 capabilities: vec![],
                 transform_id: None,
                 source_fold_id: None,
@@ -102,7 +102,7 @@ fn setup() -> FoldDbApi {
             name: "status".to_string(),
             value: FieldValue::Null,
             label: SecurityLabel::new(2, "medical"),
-            policy: TrustDistancePolicy::new(0, 2),
+            policy: FieldAccessPolicy::new(TrustTier::Owner, TrustTier::Trusted),
             capabilities: vec![],
             transform_id: Some("classify_hr".to_string()),
             source_fold_id: Some("patient_hr".to_string()),
@@ -121,7 +121,7 @@ fn setup() -> FoldDbApi {
             name: "bpm_approx".to_string(),
             value: FieldValue::Null,
             label: SecurityLabel::new(2, "medical"),
-            policy: TrustDistancePolicy::new(0, 5),
+            policy: FieldAccessPolicy::new(TrustTier::Owner, TrustTier::Outer),
             capabilities: vec![],
             transform_id: Some("round_10".to_string()),
             source_fold_id: Some("patient_hr".to_string()),
@@ -133,23 +133,23 @@ fn setup() -> FoldDbApi {
 
     // ── Trust ───────────────────────────────────────────────────
 
-    api.assign_trust("patient", "dr_smith", 1);    // attending physician
-    api.assign_trust("patient", "nurse_jones", 2); // nurse
-    api.assign_trust("patient", "researcher", 4);  // external researcher
+    api.assign_trust("patient", "dr_smith", TrustTier::Inner);    // attending physician
+    api.assign_trust("patient", "nurse_jones", TrustTier::Trusted); // nurse
+    api.assign_trust("patient", "researcher", TrustTier::Outer);  // external researcher
 
     api
 }
 
 fn doctor_ctx() -> AccessContext {
-    AccessContext::new("dr_smith", 1)
+    AccessContext::remote_single("dr_smith", "personal", TrustTier::Inner)
 }
 
 fn nurse_ctx() -> AccessContext {
-    AccessContext::new("nurse_jones", 2)
+    AccessContext::remote_single("nurse_jones", "personal", TrustTier::Trusted)
 }
 
 fn researcher_ctx() -> AccessContext {
-    AccessContext::new("researcher", 4)
+    AccessContext::remote_single("researcher", "personal", TrustTier::Outer)
 }
 
 fn patient_ctx() -> AccessContext {
@@ -350,11 +350,11 @@ fn researcher_never_sees_patient_identity() {
     });
     let fields = resp.fields.unwrap();
     assert!(
-        fields.get("patient_name").is_none(),
+        !fields.contains_key("patient_name"),
         "research view should not expose patient_name"
     );
     assert!(
-        fields.get("bpm_approx").is_some(),
+        fields.contains_key("bpm_approx"),
         "research view should have bpm_approx"
     );
 }

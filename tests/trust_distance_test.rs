@@ -1,94 +1,96 @@
-//! Tests for Trust Distance (Section 4.1).
+//! Tests for Trust Tiers.
 //!
-//! Trust distance τ(u, o) ∈ N_0 between user u and data owner o.
-//! - τ = 0 denotes the owner.
-//! - Trust is additive: τ(a,o) = n, τ(b,a) = m → τ(b,o) = n + m.
-//! - Multiple paths: system uses the shortest path (min sum).
-//! - Owner may override any derived distance with an explicit assignment.
-//! - Explicit assignments take precedence over all derived distances.
-//! - Trust distances are mutable and resolved at evaluation time.
+//! Trust tiers replace the old u64 trust distance system.
+//! - Owner always has TrustTier::Owner.
+//! - Users are assigned tiers by the data owner.
+//! - Transitive trust: effective tier is min of tiers along path.
+//! - Multiple paths: system uses the best (highest min) tier.
+//! - Owner may override any derived tier with an explicit assignment.
+//! - Explicit assignments take precedence over all derived tiers.
+//! - Trust tiers are mutable and resolved at evaluation time.
 
 use fold_db_core::access::TrustGraph;
+use fold_db_core::TrustTier;
 
 #[test]
-fn owner_distance_to_self_is_zero() {
+fn owner_tier_to_self_is_owner() {
     let graph = TrustGraph::new();
-    assert_eq!(graph.resolve("alice", "alice"), Some(0));
+    assert_eq!(graph.resolve("alice", "alice"), Some(TrustTier::Owner));
 }
 
 #[test]
 fn direct_trust_assignment() {
     let mut graph = TrustGraph::new();
-    graph.assign_trust("owner", "alice", 1);
-    assert_eq!(graph.resolve("alice", "owner"), Some(1));
+    graph.assign_trust("owner", "alice", TrustTier::Inner);
+    assert_eq!(graph.resolve("alice", "owner"), Some(TrustTier::Inner));
 }
 
 #[test]
-fn transitive_trust_is_additive() {
-    // §4.1: if owner assigns τ(a,o)=n and a assigns τ(b,a)=m, then τ(b,o)=n+m
+fn transitive_trust_uses_min_tier() {
+    // If owner assigns Inner to alice, and alice assigns Trusted to bob,
+    // bob's effective tier is min(Inner, Trusted) = Trusted
     let mut graph = TrustGraph::new();
-    graph.assign_trust("owner", "alice", 1);
-    graph.assign_trust("alice", "bob", 2);
-    assert_eq!(graph.resolve("bob", "owner"), Some(3));
+    graph.assign_trust("owner", "alice", TrustTier::Inner);
+    graph.assign_trust("alice", "bob", TrustTier::Trusted);
+    assert_eq!(graph.resolve("bob", "owner"), Some(TrustTier::Trusted));
 }
 
 #[test]
 fn three_level_transitive_chain() {
     let mut graph = TrustGraph::new();
-    graph.assign_trust("owner", "a", 1);
-    graph.assign_trust("a", "b", 2);
-    graph.assign_trust("b", "c", 3);
-    assert_eq!(graph.resolve("c", "owner"), Some(6)); // 1+2+3
+    graph.assign_trust("owner", "a", TrustTier::Inner);
+    graph.assign_trust("a", "b", TrustTier::Trusted);
+    graph.assign_trust("b", "c", TrustTier::Outer);
+    // min(Inner, Trusted, Outer) = Outer
+    assert_eq!(graph.resolve("c", "owner"), Some(TrustTier::Outer));
 }
 
 #[test]
-fn multiple_paths_uses_shortest() {
-    // §4.1: τ(u,o) = min_paths(sum of distances along path)
+fn multiple_paths_uses_best() {
+    // Path 1: owner->alice(Inner)->bob(Outer) = min(Inner,Outer) = Outer
+    // Path 2: owner->charlie(Trusted)->bob(Trusted) = min(Trusted,Trusted) = Trusted
+    // Best path: Trusted (higher)
     let mut graph = TrustGraph::new();
-    // Path 1: owner->alice(1)->bob(5) = 6
-    graph.assign_trust("owner", "alice", 1);
-    graph.assign_trust("alice", "bob", 5);
-    // Path 2: owner->charlie(2)->bob(1) = 3
-    graph.assign_trust("owner", "charlie", 2);
-    graph.assign_trust("charlie", "bob", 1);
+    graph.assign_trust("owner", "alice", TrustTier::Inner);
+    graph.assign_trust("alice", "bob", TrustTier::Outer);
+    graph.assign_trust("owner", "charlie", TrustTier::Trusted);
+    graph.assign_trust("charlie", "bob", TrustTier::Trusted);
 
-    assert_eq!(graph.resolve("bob", "owner"), Some(3)); // shortest path
+    assert_eq!(graph.resolve("bob", "owner"), Some(TrustTier::Trusted));
 }
 
 #[test]
 fn explicit_override_takes_precedence() {
-    // §4.1: owner may override any derived distance
     let mut graph = TrustGraph::new();
-    graph.assign_trust("owner", "alice", 1);
-    graph.assign_trust("alice", "bob", 2);
-    // Derived: τ(bob, owner) = 3
+    graph.assign_trust("owner", "alice", TrustTier::Inner);
+    graph.assign_trust("alice", "bob", TrustTier::Trusted);
+    // Derived: bob = Trusted
 
-    graph.set_override("owner", "bob", 5);
-    assert_eq!(graph.resolve("bob", "owner"), Some(5)); // override, not derived 3
+    graph.set_override("owner", "bob", TrustTier::Outer);
+    assert_eq!(graph.resolve("bob", "owner"), Some(TrustTier::Outer));
 }
 
 #[test]
 fn remove_override_reverts_to_derived() {
     let mut graph = TrustGraph::new();
-    graph.assign_trust("owner", "alice", 1);
-    graph.assign_trust("alice", "bob", 2);
+    graph.assign_trust("owner", "alice", TrustTier::Inner);
+    graph.assign_trust("alice", "bob", TrustTier::Trusted);
 
-    graph.set_override("owner", "bob", 10);
-    assert_eq!(graph.resolve("bob", "owner"), Some(10));
+    graph.set_override("owner", "bob", TrustTier::Public);
+    assert_eq!(graph.resolve("bob", "owner"), Some(TrustTier::Public));
 
     graph.remove_override("owner", "bob");
-    assert_eq!(graph.resolve("bob", "owner"), Some(3)); // back to derived
+    assert_eq!(graph.resolve("bob", "owner"), Some(TrustTier::Trusted));
 }
 
 #[test]
-fn revocation_sets_max_distance() {
-    // §4.1: revoking Alice from τ=1 to τ=max effectively denies access
+fn revocation_removes_access() {
     let mut graph = TrustGraph::new();
-    graph.assign_trust("owner", "alice", 1);
-    assert_eq!(graph.resolve("alice", "owner"), Some(1));
+    graph.assign_trust("owner", "alice", TrustTier::Inner);
+    assert_eq!(graph.resolve("alice", "owner"), Some(TrustTier::Inner));
 
     graph.revoke("owner", "alice");
-    assert_eq!(graph.resolve("alice", "owner"), Some(u64::MAX));
+    assert_eq!(graph.resolve("alice", "owner"), None);
 }
 
 #[test]
@@ -99,43 +101,31 @@ fn unknown_user_has_no_path() {
 
 #[test]
 fn transitive_dependents_affected_by_revocation() {
-    // §4.1: if Alice's trust distance increases, every user whose derived
-    // distance flows through Alice is recomputed on their next query.
     let mut graph = TrustGraph::new();
-    graph.assign_trust("owner", "alice", 1);
-    graph.assign_trust("alice", "bob", 2);
-    assert_eq!(graph.resolve("bob", "owner"), Some(3));
+    graph.assign_trust("owner", "alice", TrustTier::Inner);
+    graph.assign_trust("alice", "bob", TrustTier::Trusted);
+    assert_eq!(graph.resolve("bob", "owner"), Some(TrustTier::Trusted));
 
-    // Revoke alice — bob's path goes through alice, so bob is now unreachable
-    // (unless there's another path)
+    // Revoke alice -- bob's path goes through alice, so bob is now unreachable
     graph.revoke("owner", "alice");
-    // bob's only path is through alice, who now has MAX distance
-    // MAX + 2 would overflow, but the graph uses the override for alice
-    let bob_dist = graph.resolve("bob", "owner");
-    assert!(bob_dist.is_none() || bob_dist == Some(u64::MAX));
+    assert_eq!(graph.resolve("bob", "owner"), None);
 }
 
 #[test]
-fn zero_distance_edges() {
-    let mut graph = TrustGraph::new();
-    // An edge with distance 0 means the target is effectively the same as the source
-    graph.assign_trust("owner", "proxy", 0);
-    assert_eq!(graph.resolve("proxy", "owner"), Some(0));
-}
-
-#[test]
-fn diamond_graph_shortest_path() {
+fn diamond_graph_best_path() {
     //      owner
     //     /     \
-    //   a(1)   b(3)
-    //     \     /
-    //      c(1 from a, 1 from b)
+    //   a(Inner) b(Outer)
+    //     \       /
+    //      c(Trusted from a, Inner from b)
     let mut graph = TrustGraph::new();
-    graph.assign_trust("owner", "a", 1);
-    graph.assign_trust("owner", "b", 3);
-    graph.assign_trust("a", "c", 1);
-    graph.assign_trust("b", "c", 1);
+    graph.assign_trust("owner", "a", TrustTier::Inner);
+    graph.assign_trust("owner", "b", TrustTier::Outer);
+    graph.assign_trust("a", "c", TrustTier::Trusted);
+    graph.assign_trust("b", "c", TrustTier::Inner);
 
-    // Shortest: owner→a(1)→c(1) = 2, not owner→b(3)→c(1) = 4
-    assert_eq!(graph.resolve("c", "owner"), Some(2));
+    // Path via a: min(Inner, Trusted) = Trusted
+    // Path via b: min(Outer, Inner) = Outer
+    // Best: Trusted
+    assert_eq!(graph.resolve("c", "owner"), Some(TrustTier::Trusted));
 }

@@ -1,25 +1,23 @@
 //! Tests for Monadic Semantics (Section 3.2) and Fold Composition (Section 3.4).
 //!
-//! Fold[a] = C → Maybe a
+//! Fold[a] = C -> Maybe a
 //! - All-or-nothing: if any field fails any check, entire fold returns Nothing.
 //! - Failure propagation: if any step in a composed fold chain yields Nothing,
 //!   the entire chain yields Nothing without evaluating subsequent data steps.
 //! - No partial results. No error messages that leak structure.
 //!
 //! Composition: folds form a DAG through transform dependencies.
-//!   F_k = λC. F_{k-1}(C) >>= T_k
+//!   F_k = lambda C. F_{k-1}(C) >>= T_k
 //! Cycles are rejected at registration time.
 
 use fold_db_core::engine::FoldEngine;
 use fold_db_core::transform::{RegisteredTransform, Reversibility, TransformDef};
 use fold_db_core::types::{
-    AccessContext, Field, FieldValue, Fold, SecurityLabel, TrustDistancePolicy,
+    AccessContext, Field, FieldAccessPolicy, FieldValue, Fold, SecurityLabel, TrustTier,
 };
 
 #[test]
 fn all_or_nothing_one_field_denied_means_nothing() {
-    // If a fold has 3 fields and the caller can read 2 but not the third,
-    // the entire fold returns Nothing — not the 2 accessible fields.
     let mut engine = FoldEngine::new();
 
     let fold = Fold::new(
@@ -30,26 +28,26 @@ fn all_or_nothing_one_field_denied_means_nothing() {
                 "public",
                 FieldValue::String("visible".to_string()),
                 SecurityLabel::new(0, "public"),
-                TrustDistancePolicy::new(0, 5), // readable at τ=3
+                FieldAccessPolicy::new(TrustTier::Owner, TrustTier::Outer), // readable at Trusted+
             ),
             Field::new(
                 "semi",
                 FieldValue::String("semi-visible".to_string()),
                 SecurityLabel::new(1, "internal"),
-                TrustDistancePolicy::new(0, 5), // readable at τ=3
+                FieldAccessPolicy::new(TrustTier::Owner, TrustTier::Outer), // readable at Trusted+
             ),
             Field::new(
                 "secret",
                 FieldValue::String("hidden".to_string()),
                 SecurityLabel::new(2, "classified"),
-                TrustDistancePolicy::new(0, 1), // NOT readable at τ=3
+                FieldAccessPolicy::new(TrustTier::Owner, TrustTier::Inner), // NOT readable at Trusted
             ),
         ],
     );
     engine.register_fold(fold).unwrap();
-    engine.assign_trust("owner", "user", 3);
+    engine.assign_trust("owner", "user", TrustTier::Trusted);
 
-    let ctx = AccessContext::new("user", 3);
+    let ctx = AccessContext::remote_single("user", "personal", TrustTier::Trusted);
     let result = engine.query("mixed", &ctx);
 
     // Must be Nothing, not a partial projection of 2 fields
@@ -68,26 +66,26 @@ fn all_fields_pass_returns_full_projection() {
                 "a",
                 FieldValue::Integer(1),
                 SecurityLabel::new(0, "public"),
-                TrustDistancePolicy::new(0, 5),
+                FieldAccessPolicy::new(TrustTier::Owner, TrustTier::Outer),
             ),
             Field::new(
                 "b",
                 FieldValue::Integer(2),
                 SecurityLabel::new(0, "public"),
-                TrustDistancePolicy::new(0, 5),
+                FieldAccessPolicy::new(TrustTier::Owner, TrustTier::Outer),
             ),
             Field::new(
                 "c",
                 FieldValue::Integer(3),
                 SecurityLabel::new(0, "public"),
-                TrustDistancePolicy::new(0, 5),
+                FieldAccessPolicy::new(TrustTier::Owner, TrustTier::Outer),
             ),
         ],
     );
     engine.register_fold(fold).unwrap();
-    engine.assign_trust("owner", "user", 2);
+    engine.assign_trust("owner", "user", TrustTier::Trusted);
 
-    let ctx = AccessContext::new("user", 2);
+    let ctx = AccessContext::remote_single("user", "personal", TrustTier::Trusted);
     let result = engine.query("all_pass", &ctx);
     assert!(result.is_some());
     let proj = result.unwrap();
@@ -100,18 +98,14 @@ fn all_fields_pass_returns_full_projection() {
 #[test]
 fn querying_nonexistent_fold_returns_nothing() {
     let mut engine = FoldEngine::new();
-    let ctx = AccessContext::new("anyone", 0);
+    let ctx = AccessContext::remote_single("anyone", "personal", TrustTier::Public);
     assert!(engine.query("does_not_exist", &ctx).is_none());
 }
 
 #[test]
 fn three_level_fold_composition() {
-    // F1 (base) → F2 (derived via T_double) → F3 (derived via T_negate)
-    // Querying F3 should: evaluate F2, which evaluates F1, applies T_double,
-    // then F3 applies T_negate to F2's output.
     let mut engine = FoldEngine::new();
 
-    // Register transforms
     let double = RegisteredTransform::from_closure(
         TransformDef {
             id: "double".to_string(),
@@ -146,7 +140,6 @@ fn three_level_fold_composition() {
     );
     engine.register_transform(negate).unwrap();
 
-    // F1: base fold with value=5
     let f1 = Fold::new(
         "f1",
         "owner",
@@ -154,29 +147,27 @@ fn three_level_fold_composition() {
             "num",
             FieldValue::Integer(5),
             SecurityLabel::new(0, "public"),
-            TrustDistancePolicy::new(0, 10),
+            FieldAccessPolicy::new(TrustTier::Owner, TrustTier::Public),
         )],
     );
     engine.register_fold(f1).unwrap();
 
-    // F2: derives from F1 via double
     let mut f2_field = Field::new(
         "num",
         FieldValue::Null,
         SecurityLabel::new(0, "public"),
-        TrustDistancePolicy::new(0, 10),
+        FieldAccessPolicy::new(TrustTier::Owner, TrustTier::Public),
     );
     f2_field.transform_id = Some("double".to_string());
     f2_field.source_fold_id = Some("f1".to_string());
     let f2 = Fold::new("f2", "owner", vec![f2_field]);
     engine.register_fold(f2).unwrap();
 
-    // F3: derives from F2 via negate
     let mut f3_field = Field::new(
         "num",
         FieldValue::Null,
         SecurityLabel::new(0, "public"),
-        TrustDistancePolicy::new(0, 10),
+        FieldAccessPolicy::new(TrustTier::Owner, TrustTier::Public),
     );
     f3_field.transform_id = Some("negate".to_string());
     f3_field.source_fold_id = Some("f2".to_string());
@@ -185,26 +176,20 @@ fn three_level_fold_composition() {
 
     let ctx = AccessContext::owner("owner");
 
-    // F1 → 5
     let r1 = engine.query("f1", &ctx).unwrap();
     assert_eq!(r1.get("num"), Some(&FieldValue::Integer(5)));
 
-    // F2 → double(5) = 10
     let r2 = engine.query("f2", &ctx).unwrap();
     assert_eq!(r2.get("num"), Some(&FieldValue::Integer(10)));
 
-    // F3 → negate(double(5)) = negate(10) = -10
     let r3 = engine.query("f3", &ctx).unwrap();
     assert_eq!(r3.get("num"), Some(&FieldValue::Integer(-10)));
 }
 
 #[test]
 fn same_data_multiple_folds_different_policies() {
-    // §2: The same underlying data can be exposed through multiple folds
-    // with different access policies. This is the core of the model.
     let mut engine = FoldEngine::new();
 
-    // Wide-open fold
     let open = Fold::new(
         "open",
         "owner",
@@ -212,10 +197,9 @@ fn same_data_multiple_folds_different_policies() {
             "data",
             FieldValue::String("hello".to_string()),
             SecurityLabel::new(0, "public"),
-            TrustDistancePolicy::new(10, 10),
+            FieldAccessPolicy::new(TrustTier::Public, TrustTier::Public),
         )],
     );
-    // Restricted fold with same logical data
     let restricted = Fold::new(
         "restricted",
         "owner",
@@ -223,15 +207,15 @@ fn same_data_multiple_folds_different_policies() {
             "data",
             FieldValue::String("hello".to_string()),
             SecurityLabel::new(0, "public"),
-            TrustDistancePolicy::new(0, 0), // owner only
+            FieldAccessPolicy::new(TrustTier::Owner, TrustTier::Owner), // owner only
         )],
     );
 
     engine.register_fold(open).unwrap();
     engine.register_fold(restricted).unwrap();
-    engine.assign_trust("owner", "user", 3);
+    engine.assign_trust("owner", "user", TrustTier::Trusted);
 
-    let ctx = AccessContext::new("user", 3);
+    let ctx = AccessContext::remote_single("user", "personal", TrustTier::Trusted);
     assert!(engine.query("open", &ctx).is_some());
     assert!(engine.query("restricted", &ctx).is_none());
 }

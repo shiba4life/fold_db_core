@@ -14,7 +14,7 @@
 use fold_db_core::api::*;
 use fold_db_core::transform::{Reversibility, TransformDef};
 use fold_db_core::types::{
-    AccessContext, FieldValue, SecurityLabel, TrustDistancePolicy,
+    AccessContext, FieldAccessPolicy, FieldValue, SecurityLabel, TrustTier,
 };
 use serde_json::{json, Map, Value};
 
@@ -192,7 +192,7 @@ fn setup() -> FoldDbApi {
             name: "weeks".to_string(),
             value: FieldValue::Json(json!({})), // starts empty
             label: SecurityLabel::new(2, "medical"),
-            policy: TrustDistancePolicy::new(1, 1),
+            policy: FieldAccessPolicy::new(TrustTier::Inner, TrustTier::Inner),
             capabilities: vec![],
             transform_id: None,
             source_fold_id: None,
@@ -211,7 +211,7 @@ fn setup() -> FoldDbApi {
             name: "avg_bpm".to_string(),
             value: FieldValue::Null,
             label: SecurityLabel::new(2, "medical"),
-            policy: TrustDistancePolicy::new(0, 3),
+            policy: FieldAccessPolicy::new(TrustTier::Owner, TrustTier::Trusted),
             capabilities: vec![],
             transform_id: Some("latest_week_avg".to_string()),
             source_fold_id: Some("hr_weekly".to_string()),
@@ -230,7 +230,7 @@ fn setup() -> FoldDbApi {
             name: "weekly_averages".to_string(),
             value: FieldValue::Null,
             label: SecurityLabel::new(2, "medical"),
-            policy: TrustDistancePolicy::new(0, 2),
+            policy: FieldAccessPolicy::new(TrustTier::Owner, TrustTier::Trusted),
             capabilities: vec![],
             transform_id: Some("all_weeks_avg".to_string()),
             source_fold_id: Some("hr_weekly".to_string()),
@@ -249,7 +249,7 @@ fn setup() -> FoldDbApi {
             name: "trend".to_string(),
             value: FieldValue::Null,
             label: SecurityLabel::new(2, "medical"),
-            policy: TrustDistancePolicy::new(0, 5),
+            policy: FieldAccessPolicy::new(TrustTier::Owner, TrustTier::Outer),
             capabilities: vec![],
             transform_id: Some("hr_trend".to_string()),
             source_fold_id: Some("hr_weekly".to_string()),
@@ -261,9 +261,9 @@ fn setup() -> FoldDbApi {
 
     // ── Trust ───────────────────────────────────────────────────
 
-    api.assign_trust("patient", "cardiologist", 1);
-    api.assign_trust("patient", "nurse", 2);
-    api.assign_trust("patient", "fitness_app", 4);
+    api.assign_trust("patient", "cardiologist", TrustTier::Inner);
+    api.assign_trust("patient", "nurse", TrustTier::Trusted);
+    api.assign_trust("patient", "fitness_app", TrustTier::Outer);
 
     api
 }
@@ -540,45 +540,45 @@ fn access_control_multi_week() {
     // Cardiologist (τ=1): sees raw + all derived
     let resp = api.query_fold(QueryRequest {
         fold_id: "hr_weekly".to_string(),
-        context: AccessContext::new("cardiologist", 1),
+        context: AccessContext::remote_single("cardiologist", "personal", TrustTier::Inner),
     });
     assert!(resp.fields.is_some(), "cardiologist sees raw");
 
     let resp = api.query_fold(QueryRequest {
         fold_id: "all_avgs".to_string(),
-        context: AccessContext::new("cardiologist", 1),
+        context: AccessContext::remote_single("cardiologist", "personal", TrustTier::Inner),
     });
     assert!(resp.fields.is_some(), "cardiologist sees all_avgs");
 
     // Nurse (τ=2): sees all_avgs (R≤2) and trend (R≤5), NOT raw (R≤1)
     let resp = api.query_fold(QueryRequest {
         fold_id: "hr_weekly".to_string(),
-        context: AccessContext::new("nurse", 2),
+        context: AccessContext::remote_single("nurse", "personal", TrustTier::Trusted),
     });
     assert!(resp.fields.is_none(), "nurse cannot see raw");
 
     let resp = api.query_fold(QueryRequest {
         fold_id: "all_avgs".to_string(),
-        context: AccessContext::new("nurse", 2),
+        context: AccessContext::remote_single("nurse", "personal", TrustTier::Trusted),
     });
     assert!(resp.fields.is_some(), "nurse sees all_avgs");
 
     // Fitness app (τ=4): sees trend only (R≤5), NOT averages (R≤3, R≤2) or raw
     let resp = api.query_fold(QueryRequest {
         fold_id: "hr_trend".to_string(),
-        context: AccessContext::new("fitness_app", 4),
+        context: AccessContext::remote_single("fitness_app", "personal", TrustTier::Outer),
     });
     assert!(resp.fields.is_some(), "fitness app sees trend");
 
     let resp = api.query_fold(QueryRequest {
         fold_id: "latest_avg".to_string(),
-        context: AccessContext::new("fitness_app", 4),
+        context: AccessContext::remote_single("fitness_app", "personal", TrustTier::Outer),
     });
     assert!(resp.fields.is_none(), "fitness app cannot see latest_avg");
 
     let resp = api.query_fold(QueryRequest {
         fold_id: "all_avgs".to_string(),
-        context: AccessContext::new("fitness_app", 4),
+        context: AccessContext::remote_single("fitness_app", "personal", TrustTier::Outer),
     });
     assert!(resp.fields.is_none(), "fitness app cannot see all_avgs");
 }

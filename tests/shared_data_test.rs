@@ -13,7 +13,7 @@
 use fold_db_core::api::*;
 use fold_db_core::transform::{Reversibility, TransformDef};
 use fold_db_core::types::{
-    AccessContext, FieldValue, SecurityLabel, TrustDistancePolicy,
+    AccessContext, FieldAccessPolicy, FieldValue, SecurityLabel, TrustTier,
 };
 
 fn owner() -> AccessContext {
@@ -25,7 +25,7 @@ fn base_field(name: &str, value: FieldValue) -> FieldDef {
         name: name.to_string(),
         value,
         label: SecurityLabel::new(1, "internal"),
-        policy: TrustDistancePolicy::new(1, 1),
+        policy: FieldAccessPolicy::new(TrustTier::Inner, TrustTier::Inner),
         capabilities: vec![],
         transform_id: None,
         source_fold_id: None,
@@ -38,13 +38,13 @@ fn derived_field(
     transform_id: &str,
     source_fold_id: &str,
     source_field_name: Option<&str>,
-    read_max: u64,
+    min_read_tier: TrustTier,
 ) -> FieldDef {
     FieldDef {
         name: name.to_string(),
         value: FieldValue::Null,
         label: SecurityLabel::new(1, "internal"),
-        policy: TrustDistancePolicy::new(0, read_max),
+        policy: FieldAccessPolicy::new(TrustTier::Owner, min_read_tier),
         capabilities: vec![],
         transform_id: Some(transform_id.to_string()),
         source_fold_id: Some(source_fold_id.to_string()),
@@ -138,7 +138,7 @@ fn setup() -> FoldDbApi {
         fold_id: "hr_view".to_string(),
         owner_id: "company".to_string(),
         fields: vec![
-            derived_field("salary_eur", "usd_to_eur", "employee_record", Some("salary"), 2),
+            derived_field("salary_eur", "usd_to_eur", "employee_record", Some("salary"), TrustTier::Inner),
         ],
         payment_gate: None,
     })
@@ -150,8 +150,8 @@ fn setup() -> FoldDbApi {
         fold_id: "directory_view".to_string(),
         owner_id: "company".to_string(),
         fields: vec![
-            derived_field("salary_band", "salary_band", "employee_record", Some("salary"), 5),
-            derived_field("name", "uppercase", "employee_record", None, 5),
+            derived_field("salary_band", "salary_band", "employee_record", Some("salary"), TrustTier::Outer),
+            derived_field("name", "uppercase", "employee_record", None, TrustTier::Outer),
         ],
         payment_gate: None,
     })
@@ -163,8 +163,8 @@ fn setup() -> FoldDbApi {
         fold_id: "analytics_view".to_string(),
         owner_id: "company".to_string(),
         fields: vec![
-            derived_field("name", "uppercase", "employee_record", None, 10),
-            derived_field("department", "uppercase", "employee_record", None, 10),
+            derived_field("name", "uppercase", "employee_record", None, TrustTier::Public),
+            derived_field("department", "uppercase", "employee_record", None, TrustTier::Public),
         ],
         payment_gate: None,
     })
@@ -172,9 +172,9 @@ fn setup() -> FoldDbApi {
 
     // ── Trust assignments ────────────────────────────────────────
 
-    api.assign_trust("company", "hr_manager", 1);
-    api.assign_trust("company", "team_lead", 3);
-    api.assign_trust("company", "intern", 7);
+    api.assign_trust("company", "hr_manager", TrustTier::Inner);
+    api.assign_trust("company", "team_lead", TrustTier::Trusted);
+    api.assign_trust("company", "intern", TrustTier::Public);
 
     api
 }
@@ -188,7 +188,7 @@ fn derived_folds_reflect_source_data() {
     // HR view: salary 75000 * 0.85 = 63750.0
     let resp = api.query_fold(QueryRequest {
         fold_id: "hr_view".to_string(),
-        context: AccessContext::new("hr_manager", 1),
+        context: AccessContext::remote_single("hr_manager", "personal", TrustTier::Inner),
     });
     let fields = resp.fields.expect("hr_manager should access hr_view");
     assert_eq!(fields.get("salary_eur"), Some(&FieldValue::Float(63750.0)));
@@ -196,7 +196,7 @@ fn derived_folds_reflect_source_data() {
     // Directory view: salary band "70000-80000", name "ALICE SMITH"
     let resp = api.query_fold(QueryRequest {
         fold_id: "directory_view".to_string(),
-        context: AccessContext::new("team_lead", 3),
+        context: AccessContext::remote_single("team_lead", "personal", TrustTier::Trusted),
     });
     let fields = resp.fields.expect("team_lead should access directory_view");
     assert_eq!(
@@ -211,7 +211,7 @@ fn derived_folds_reflect_source_data() {
     // Analytics view: name "ALICE SMITH", department "ENGINEERING"
     let resp = api.query_fold(QueryRequest {
         fold_id: "analytics_view".to_string(),
-        context: AccessContext::new("intern", 7),
+        context: AccessContext::remote_single("intern", "personal", TrustTier::Public),
     });
     let fields = resp.fields.expect("intern should access analytics_view");
     assert_eq!(
@@ -459,51 +459,51 @@ fn access_policies_enforced_per_derived_fold() {
     // hr_manager (τ=1): can read hr_view (R≤2) and source (R≤1)
     let resp = api.query_fold(QueryRequest {
         fold_id: "hr_view".to_string(),
-        context: AccessContext::new("hr_manager", 1),
+        context: AccessContext::remote_single("hr_manager", "personal", TrustTier::Inner),
     });
     assert!(resp.fields.is_some(), "hr_manager should read hr_view");
 
     let resp = api.query_fold(QueryRequest {
         fold_id: "employee_record".to_string(),
-        context: AccessContext::new("hr_manager", 1),
+        context: AccessContext::remote_single("hr_manager", "personal", TrustTier::Inner),
     });
     assert!(resp.fields.is_some(), "hr_manager should read source");
 
     // team_lead (τ=3): can read directory_view (R≤5) but NOT hr_view (R≤2) or source (R≤1)
     let resp = api.query_fold(QueryRequest {
         fold_id: "directory_view".to_string(),
-        context: AccessContext::new("team_lead", 3),
+        context: AccessContext::remote_single("team_lead", "personal", TrustTier::Trusted),
     });
     assert!(resp.fields.is_some(), "team_lead should read directory_view");
 
     let resp = api.query_fold(QueryRequest {
         fold_id: "hr_view".to_string(),
-        context: AccessContext::new("team_lead", 3),
+        context: AccessContext::remote_single("team_lead", "personal", TrustTier::Trusted),
     });
     assert!(resp.fields.is_none(), "team_lead should NOT read hr_view");
 
     let resp = api.query_fold(QueryRequest {
         fold_id: "employee_record".to_string(),
-        context: AccessContext::new("team_lead", 3),
+        context: AccessContext::remote_single("team_lead", "personal", TrustTier::Trusted),
     });
     assert!(resp.fields.is_none(), "team_lead should NOT read source");
 
     // intern (τ=7): can only read analytics_view (R≤10)
     let resp = api.query_fold(QueryRequest {
         fold_id: "analytics_view".to_string(),
-        context: AccessContext::new("intern", 7),
+        context: AccessContext::remote_single("intern", "personal", TrustTier::Public),
     });
     assert!(resp.fields.is_some(), "intern should read analytics_view");
 
     let resp = api.query_fold(QueryRequest {
         fold_id: "directory_view".to_string(),
-        context: AccessContext::new("intern", 7),
+        context: AccessContext::remote_single("intern", "personal", TrustTier::Public),
     });
     assert!(resp.fields.is_none(), "intern should NOT read directory_view");
 
     let resp = api.query_fold(QueryRequest {
         fold_id: "hr_view".to_string(),
-        context: AccessContext::new("intern", 7),
+        context: AccessContext::remote_single("intern", "personal", TrustTier::Public),
     });
     assert!(resp.fields.is_none(), "intern should NOT read hr_view");
 }

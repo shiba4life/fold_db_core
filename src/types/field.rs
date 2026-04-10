@@ -2,31 +2,32 @@ use serde::{Deserialize, Serialize};
 
 use super::security_label::SecurityLabel;
 use super::value::FieldValue;
+use super::TrustTier;
 
-/// Trust-distance policy W_n R_m for a field.
-/// Writable if τ ≤ write_max, Readable if τ ≤ read_max.
+/// Field access policy based on TrustTier.
+/// Readable if caller_tier >= min_read_tier, writable if caller_tier >= min_write_tier.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TrustDistancePolicy {
-    /// Maximum trust distance for write access.
-    pub write_max: u64,
-    /// Maximum trust distance for read access.
-    pub read_max: u64,
+pub struct FieldAccessPolicy {
+    /// Minimum trust tier required for write access.
+    pub min_write_tier: TrustTier,
+    /// Minimum trust tier required for read access.
+    pub min_read_tier: TrustTier,
 }
 
-impl TrustDistancePolicy {
-    pub fn new(write_max: u64, read_max: u64) -> Self {
+impl FieldAccessPolicy {
+    pub fn new(min_write_tier: TrustTier, min_read_tier: TrustTier) -> Self {
         Self {
-            write_max,
-            read_max,
+            min_write_tier,
+            min_read_tier,
         }
     }
 
-    pub fn can_write(&self, trust_distance: u64) -> bool {
-        trust_distance <= self.write_max
+    pub fn can_write(&self, caller_tier: TrustTier) -> bool {
+        caller_tier >= self.min_write_tier
     }
 
-    pub fn can_read(&self, trust_distance: u64) -> bool {
-        trust_distance <= self.read_max
+    pub fn can_read(&self, caller_tier: TrustTier) -> bool {
+        caller_tier >= self.min_read_tier
     }
 }
 
@@ -50,13 +51,13 @@ pub enum CapabilityKind {
 }
 
 /// A field within a fold. Each field carries a value, security label,
-/// trust-distance policy, and optional capability constraints.
+/// access policy, and optional capability constraints.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Field {
     pub name: String,
     pub value: FieldValue,
     pub label: SecurityLabel,
-    pub policy: TrustDistancePolicy,
+    pub policy: FieldAccessPolicy,
     pub capabilities: Vec<CapabilityConstraint>,
     /// If set, this field derives its value from a transform applied to a source fold.
     pub transform_id: Option<String>,
@@ -71,7 +72,7 @@ impl Field {
         name: impl Into<String>,
         value: FieldValue,
         label: SecurityLabel,
-        policy: TrustDistancePolicy,
+        policy: FieldAccessPolicy,
     ) -> Self {
         Self {
             name: name.into(),

@@ -13,7 +13,7 @@
 use fold_db_core::api::*;
 use fold_db_core::transform::{Reversibility, TransformDef};
 use fold_db_core::types::{
-    AccessContext, FieldValue, SecurityLabel, TrustDistancePolicy,
+    AccessContext, FieldAccessPolicy, FieldValue, SecurityLabel, TrustTier,
 };
 use serde_json::json;
 
@@ -186,7 +186,7 @@ fn setup() -> FoldDbApi {
             name: "readings".to_string(),
             value: readings_to_json(&initial_readings),
             label: SecurityLabel::new(2, "medical"),
-            policy: TrustDistancePolicy::new(1, 1),
+            policy: FieldAccessPolicy::new(TrustTier::Inner, TrustTier::Inner),
             capabilities: vec![],
             transform_id: None,
             source_fold_id: None,
@@ -205,7 +205,7 @@ fn setup() -> FoldDbApi {
             name: "avg_bpm".to_string(),
             value: FieldValue::Null,
             label: SecurityLabel::new(2, "medical"),
-            policy: TrustDistancePolicy::new(0, 3),
+            policy: FieldAccessPolicy::new(TrustTier::Owner, TrustTier::Trusted),
             capabilities: vec![],
             transform_id: Some("avg_bpm".to_string()),
             source_fold_id: Some("hr_readings".to_string()),
@@ -224,7 +224,7 @@ fn setup() -> FoldDbApi {
             name: "summary".to_string(),
             value: FieldValue::Null,
             label: SecurityLabel::new(2, "medical"),
-            policy: TrustDistancePolicy::new(0, 2),
+            policy: FieldAccessPolicy::new(TrustTier::Owner, TrustTier::Trusted),
             capabilities: vec![],
             transform_id: Some("summary_bpm".to_string()),
             source_fold_id: Some("hr_readings".to_string()),
@@ -243,7 +243,7 @@ fn setup() -> FoldDbApi {
             name: "zone".to_string(),
             value: FieldValue::Null,
             label: SecurityLabel::new(2, "medical"),
-            policy: TrustDistancePolicy::new(0, 5),
+            policy: FieldAccessPolicy::new(TrustTier::Owner, TrustTier::Outer),
             capabilities: vec![],
             transform_id: Some("hr_zone".to_string()),
             source_fold_id: Some("hr_readings".to_string()),
@@ -255,9 +255,9 @@ fn setup() -> FoldDbApi {
 
     // ── Trust ───────────────────────────────────────────────────
 
-    api.assign_trust("patient", "cardiologist", 1);
-    api.assign_trust("patient", "nurse", 2);
-    api.assign_trust("patient", "wellness_app", 4);
+    api.assign_trust("patient", "cardiologist", TrustTier::Inner);
+    api.assign_trust("patient", "nurse", TrustTier::Trusted);
+    api.assign_trust("patient", "wellness_app", TrustTier::Outer);
 
     api
 }
@@ -454,51 +454,51 @@ fn access_control_on_aggregated_views() {
     // Cardiologist (τ=1): sees raw readings AND all derived folds
     let resp = api.query_fold(QueryRequest {
         fold_id: "hr_readings".to_string(),
-        context: AccessContext::new("cardiologist", 1),
+        context: AccessContext::remote_single("cardiologist", "personal", TrustTier::Inner),
     });
     assert!(resp.fields.is_some(), "cardiologist should see raw readings");
 
     let resp = api.query_fold(QueryRequest {
         fold_id: "weekly_summary".to_string(),
-        context: AccessContext::new("cardiologist", 1),
+        context: AccessContext::remote_single("cardiologist", "personal", TrustTier::Inner),
     });
     assert!(resp.fields.is_some(), "cardiologist should see summary");
 
     // Nurse (τ=2): sees summary (R≤2) and zone (R≤5), but NOT raw readings (R≤1)
     let resp = api.query_fold(QueryRequest {
         fold_id: "hr_readings".to_string(),
-        context: AccessContext::new("nurse", 2),
+        context: AccessContext::remote_single("nurse", "personal", TrustTier::Trusted),
     });
     assert!(resp.fields.is_none(), "nurse should NOT see raw readings");
 
     let resp = api.query_fold(QueryRequest {
         fold_id: "weekly_summary".to_string(),
-        context: AccessContext::new("nurse", 2),
+        context: AccessContext::remote_single("nurse", "personal", TrustTier::Trusted),
     });
     assert!(resp.fields.is_some(), "nurse should see summary");
 
     let resp = api.query_fold(QueryRequest {
         fold_id: "weekly_zone".to_string(),
-        context: AccessContext::new("nurse", 2),
+        context: AccessContext::remote_single("nurse", "personal", TrustTier::Trusted),
     });
     assert!(resp.fields.is_some(), "nurse should see zone");
 
     // Wellness app (τ=4): sees zone only (R≤5), NOT avg (R≤3), summary (R≤2), or raw (R≤1)
     let resp = api.query_fold(QueryRequest {
         fold_id: "weekly_zone".to_string(),
-        context: AccessContext::new("wellness_app", 4),
+        context: AccessContext::remote_single("wellness_app", "personal", TrustTier::Outer),
     });
     assert!(resp.fields.is_some(), "wellness app should see zone");
 
     let resp = api.query_fold(QueryRequest {
         fold_id: "weekly_avg".to_string(),
-        context: AccessContext::new("wellness_app", 4),
+        context: AccessContext::remote_single("wellness_app", "personal", TrustTier::Outer),
     });
     assert!(resp.fields.is_none(), "wellness app should NOT see avg");
 
     let resp = api.query_fold(QueryRequest {
         fold_id: "weekly_summary".to_string(),
-        context: AccessContext::new("wellness_app", 4),
+        context: AccessContext::remote_single("wellness_app", "personal", TrustTier::Outer),
     });
     assert!(resp.fields.is_none(), "wellness app should NOT see summary");
 }
