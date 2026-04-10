@@ -108,9 +108,7 @@ impl RegisteredTransform {
 
     pub fn apply_inverse(&self, input: &FieldValue) -> Option<FieldValue> {
         match &self.implementation {
-            TransformImpl::Closure { inverse, .. } => {
-                inverse.as_ref().map(|inv| inv(input))
-            }
+            TransformImpl::Closure { inverse, .. } => inverse.as_ref().map(|inv| inv(input)),
             TransformImpl::Expression { inverse, .. } => {
                 inverse.as_ref().map(|inv| inv.evaluate(input))
             }
@@ -145,10 +143,6 @@ impl RegisteredTransform {
 /// Hex encoding for content-addressed hashes.
 mod hex {
     pub fn encode(bytes: impl AsRef<[u8]>) -> String {
-        bytes
-            .as_ref()
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect()
+        bytes.as_ref().iter().map(|b| format!("{b:02x}")).collect()
     }
 }

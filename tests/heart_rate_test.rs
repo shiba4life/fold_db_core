@@ -9,9 +9,7 @@
 
 use fold_db_core::api::*;
 use fold_db_core::transform::{Reversibility, TransformDef};
-use fold_db_core::types::{
-    AccessContext, FieldAccessPolicy, FieldValue, SecurityLabel, TrustTier,
-};
+use fold_db_core::types::{AccessContext, FieldAccessPolicy, FieldValue, SecurityLabel, TrustTier};
 
 fn setup() -> FoldDbApi {
     let mut api = FoldDbApi::new();
@@ -133,9 +131,9 @@ fn setup() -> FoldDbApi {
 
     // ── Trust ───────────────────────────────────────────────────
 
-    api.assign_trust("patient", "dr_smith", TrustTier::Inner);    // attending physician
+    api.assign_trust("patient", "dr_smith", TrustTier::Inner); // attending physician
     api.assign_trust("patient", "nurse_jones", TrustTier::Trusted); // nurse
-    api.assign_trust("patient", "researcher", TrustTier::Outer);  // external researcher
+    api.assign_trust("patient", "researcher", TrustTier::Outer); // external researcher
 
     api
 }
@@ -334,7 +332,10 @@ fn roles_see_only_permitted_views() {
         fold_id: "patient_hr".to_string(),
         context: researcher_ctx(),
     });
-    assert!(resp.fields.is_none(), "researcher should NOT see patient_hr");
+    assert!(
+        resp.fields.is_none(),
+        "researcher should NOT see patient_hr"
+    );
 }
 
 // ── Test: researcher cannot see patient identity ─────────────────────
@@ -529,7 +530,15 @@ fn audit_trail_captures_all_heart_rate_activity() {
     });
     let denied = nurse_events
         .iter()
-        .filter(|e| matches!(e.kind, fold_db_core::audit::AuditEventKind::AccessDenied { .. }))
+        .filter(|e| {
+            matches!(
+                e.kind,
+                fold_db_core::audit::AuditEventKind::AccessDenied { .. }
+            )
+        })
         .count();
-    assert!(denied >= 1, "nurse's denied access to raw HR should be audited");
+    assert!(
+        denied >= 1,
+        "nurse's denied access to raw HR should be audited"
+    );
 }

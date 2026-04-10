@@ -109,7 +109,10 @@ fn medical_records_multi_role_access() {
     });
     assert!(resp.fields.is_some());
     let fields = resp.fields.unwrap();
-    assert_eq!(fields.get("name"), Some(&FieldValue::String("Jane Doe".to_string())));
+    assert_eq!(
+        fields.get("name"),
+        Some(&FieldValue::String("Jane Doe".to_string()))
+    );
 
     // Doctor can also write diagnosis (Inner >= Inner)
     api.write_field(WriteRequest {
@@ -206,7 +209,10 @@ fn transform_chain_with_rollback() {
         fold_id: "doubled".to_string(),
         context: ctx.clone(),
     });
-    assert_eq!(resp.fields.unwrap().get("val"), Some(&FieldValue::Integer(20)));
+    assert_eq!(
+        resp.fields.unwrap().get("val"),
+        Some(&FieldValue::Integer(20))
+    );
 
     api.write_field(WriteRequest {
         fold_id: "doubled".to_string(),
@@ -221,7 +227,10 @@ fn transform_chain_with_rollback() {
         fold_id: "base".to_string(),
         context: ctx.clone(),
     });
-    assert_eq!(resp.fields.unwrap().get("val"), Some(&FieldValue::Integer(50)));
+    assert_eq!(
+        resp.fields.unwrap().get("val"),
+        Some(&FieldValue::Integer(50))
+    );
 
     api.write_field(WriteRequest {
         fold_id: "base".to_string(),
@@ -245,13 +254,19 @@ fn transform_chain_with_rollback() {
         fold_id: "base".to_string(),
         context: ctx.clone(),
     });
-    assert_eq!(resp.fields.unwrap().get("val"), Some(&FieldValue::Integer(50)));
+    assert_eq!(
+        resp.fields.unwrap().get("val"),
+        Some(&FieldValue::Integer(50))
+    );
 
     let resp = api.query_fold(QueryRequest {
         fold_id: "doubled".to_string(),
         context: ctx.clone(),
     });
-    assert_eq!(resp.fields.unwrap().get("val"), Some(&FieldValue::Integer(100)));
+    assert_eq!(
+        resp.fields.unwrap().get("val"),
+        Some(&FieldValue::Integer(100))
+    );
 
     let history = api
         .get_field_history(HistoryRequest {
@@ -276,7 +291,10 @@ fn paid_content_marketplace() {
         fold_id: "premium_article".to_string(),
         owner_id: "creator".to_string(),
         fields: vec![
-            public_field("title", FieldValue::String("Advanced Fold Theory".to_string())),
+            public_field(
+                "title",
+                FieldValue::String("Advanced Fold Theory".to_string()),
+            ),
             FieldDef {
                 name: "content".to_string(),
                 value: FieldValue::String("Full article body here...".to_string()),
@@ -527,7 +545,10 @@ fn full_lifecycle() {
     api.create_fold(CreateFoldRequest {
         fold_id: "profile".to_string(),
         owner_id: "owner".to_string(),
-        fields: vec![public_field("name", FieldValue::String("alice".to_string()))],
+        fields: vec![public_field(
+            "name",
+            FieldValue::String("alice".to_string()),
+        )],
         payment_gate: None,
     })
     .unwrap();
@@ -656,7 +677,10 @@ fn write_to_irreversible_derived_fold_denied() {
     api.create_fold(CreateFoldRequest {
         fold_id: "src".to_string(),
         owner_id: "owner".to_string(),
-        fields: vec![public_field("val", FieldValue::String("secret".to_string()))],
+        fields: vec![public_field(
+            "val",
+            FieldValue::String("secret".to_string()),
+        )],
         payment_gate: None,
     })
     .unwrap();

@@ -16,15 +16,9 @@ pub enum AuditEventKind {
         version: u64,
     },
     /// A denied access attempt.
-    AccessDenied {
-        fold_id: String,
-        reason: String,
-    },
+    AccessDenied { fold_id: String, reason: String },
     /// A payment transaction.
-    Payment {
-        fold_id: String,
-        amount: f64,
-    },
+    Payment { fold_id: String, amount: f64 },
     /// A trust distance change.
     TrustChange {
         owner_id: String,
@@ -96,24 +90,12 @@ impl AuditLog {
         self.events
             .iter()
             .filter(|e| match &e.kind {
-                AuditEventKind::Read {
-                    fold_id: fid, ..
-                }
-                | AuditEventKind::Write {
-                    fold_id: fid, ..
-                }
-                | AuditEventKind::AccessDenied {
-                    fold_id: fid, ..
-                }
-                | AuditEventKind::Payment {
-                    fold_id: fid, ..
-                }
-                | AuditEventKind::CapabilityChange {
-                    fold_id: fid, ..
-                }
-                | AuditEventKind::TransformApplied {
-                    fold_id: fid, ..
-                } => fid == fold_id,
+                AuditEventKind::Read { fold_id: fid, .. }
+                | AuditEventKind::Write { fold_id: fid, .. }
+                | AuditEventKind::AccessDenied { fold_id: fid, .. }
+                | AuditEventKind::Payment { fold_id: fid, .. }
+                | AuditEventKind::CapabilityChange { fold_id: fid, .. }
+                | AuditEventKind::TransformApplied { fold_id: fid, .. } => fid == fold_id,
                 AuditEventKind::TrustChange { .. } => false,
             })
             .collect()

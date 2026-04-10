@@ -35,7 +35,6 @@ pub struct RangeLabel {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum TransformExpr {
     // ── Arithmetic (Float/Integer → Float) ──────────────────────
-
     /// Multiply by a constant.
     Multiply(f64),
     /// Divide by a constant. Division by zero returns Null.
@@ -48,7 +47,6 @@ pub enum TransformExpr {
     RoundDecimal(u32),
 
     // ── String ──────────────────────────────────────────────────
-
     /// Convert string to uppercase.
     Uppercase,
     /// Convert string to lowercase.
@@ -57,7 +55,6 @@ pub enum TransformExpr {
     HashSha256,
 
     // ── Array aggregation (Json array of numbers → value) ───────
-
     /// Average of a numeric array → Float.
     ArrayAverage,
     /// Sum of a numeric array → Float.
@@ -72,7 +69,6 @@ pub enum TransformExpr {
     ArraySummary,
 
     // ── JSON object operations ──────────────────────────────────
-
     /// Extract a field by name from a JSON object.
     JsonGetField(String),
     /// Get the value at the lexicographically last key (e.g., latest week).
@@ -82,7 +78,6 @@ pub enum TransformExpr {
     JsonMapValues(Box<TransformExpr>),
 
     // ── Classification ──────────────────────────────────────────
-
     /// Map a numeric value to a label based on ranges.
     /// Ranges are checked in order; first match wins.
     RangeClassify {
@@ -91,7 +86,6 @@ pub enum TransformExpr {
     },
 
     // ── Trend analysis ──────────────────────────────────────────
-
     /// Analyze a JSON object of { week_key: [readings] }.
     /// Compares the last two weeks' averages.
     /// Returns Json { direction, change_bpm, change_pct, current_avg, previous_avg, weeks_tracked }.
@@ -103,7 +97,6 @@ pub enum TransformExpr {
     },
 
     // ── Composition ─────────────────────────────────────────────
-
     /// Apply expressions left-to-right: Pipeline([A, B, C]) = C(B(A(input))).
     Pipeline(Vec<TransformExpr>),
 }
@@ -176,9 +169,7 @@ impl TransformExpr {
             Self::ArrayAverage => eval_array_agg(input, |nums| {
                 FieldValue::Float(nums.iter().sum::<f64>() / nums.len() as f64)
             }),
-            Self::ArraySum => eval_array_agg(input, |nums| {
-                FieldValue::Float(nums.iter().sum())
-            }),
+            Self::ArraySum => eval_array_agg(input, |nums| FieldValue::Float(nums.iter().sum())),
             Self::ArrayMin => eval_array_agg(input, |nums| {
                 FieldValue::Float(nums.iter().cloned().fold(f64::INFINITY, f64::min))
             }),
@@ -203,21 +194,17 @@ impl TransformExpr {
 
             // ── JSON object operations ──────────────────────────
             Self::JsonGetField(field_name) => match input {
-                FieldValue::Json(Value::Object(obj)) => {
-                    match obj.get(field_name) {
-                        Some(v) => json_to_field_value(v),
-                        None => FieldValue::Null,
-                    }
-                }
+                FieldValue::Json(Value::Object(obj)) => match obj.get(field_name) {
+                    Some(v) => json_to_field_value(v),
+                    None => FieldValue::Null,
+                },
                 _ => FieldValue::Null,
             },
             Self::JsonGetLatestKey => match input {
-                FieldValue::Json(Value::Object(obj)) => {
-                    match obj.keys().max() {
-                        Some(key) => json_to_field_value(&obj[key]),
-                        None => FieldValue::Null,
-                    }
-                }
+                FieldValue::Json(Value::Object(obj)) => match obj.keys().max() {
+                    Some(key) => json_to_field_value(&obj[key]),
+                    None => FieldValue::Null,
+                },
                 _ => FieldValue::Null,
             },
             Self::JsonMapValues(expr) => match input {
@@ -290,7 +277,11 @@ fn eval_array_agg(input: &FieldValue, f: impl FnOnce(&[f64]) -> FieldValue) -> F
 }
 
 /// Analyze a JSON object of { week_key: [readings] } for week-over-week trend.
-fn eval_trend(input: &FieldValue, improving_threshold: f64, declining_threshold: f64) -> FieldValue {
+fn eval_trend(
+    input: &FieldValue,
+    improving_threshold: f64,
+    declining_threshold: f64,
+) -> FieldValue {
     let FieldValue::Json(Value::Object(weeks)) = input else {
         return FieldValue::Null;
     };
@@ -362,11 +353,9 @@ fn field_value_to_json(v: &FieldValue) -> Value {
     match v {
         FieldValue::String(s) => Value::String(s.clone()),
         FieldValue::Integer(n) => Value::Number((*n).into()),
-        FieldValue::Float(n) => {
-            serde_json::Number::from_f64(*n)
-                .map(Value::Number)
-                .unwrap_or(Value::Null)
-        }
+        FieldValue::Float(n) => serde_json::Number::from_f64(*n)
+            .map(Value::Number)
+            .unwrap_or(Value::Null),
         FieldValue::Boolean(b) => Value::Bool(*b),
         FieldValue::Json(v) => v.clone(),
         FieldValue::Bytes(_) | FieldValue::Null => Value::Null,

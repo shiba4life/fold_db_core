@@ -61,15 +61,17 @@ impl TrustGraph {
         }
 
         // Check if revoked
-        if self.revoked.get(&(user.to_string(), owner.to_string())).copied().unwrap_or(false) {
+        if self
+            .revoked
+            .get(&(user.to_string(), owner.to_string()))
+            .copied()
+            .unwrap_or(false)
+        {
             return None;
         }
 
         // Check explicit override first
-        if let Some(&tier) = self
-            .overrides
-            .get(&(user.to_string(), owner.to_string()))
-        {
+        if let Some(&tier) = self.overrides.get(&(user.to_string(), owner.to_string())) {
             return Some(tier);
         }
 
@@ -106,7 +108,12 @@ impl TrustGraph {
             if let Some(neighbors) = self.adjacency.get(node) {
                 for (to, tier) in neighbors {
                     // Check if this user is revoked with respect to the owner
-                    if self.revoked.get(&(to.clone(), owner.to_string())).copied().unwrap_or(false) {
+                    if self
+                        .revoked
+                        .get(&(to.clone(), owner.to_string()))
+                        .copied()
+                        .unwrap_or(false)
+                    {
                         continue;
                     }
                     let new_min = std::cmp::min(path_min, *tier);

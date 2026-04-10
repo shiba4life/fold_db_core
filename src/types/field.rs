@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
+use super::TrustTier;
 use super::security_label::SecurityLabel;
 use super::value::FieldValue;
-use super::TrustTier;
 
 /// Field access policy based on TrustTier.
 /// Readable if caller_tier >= min_read_tier, writable if caller_tier >= min_write_tier.

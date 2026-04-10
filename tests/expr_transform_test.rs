@@ -12,9 +12,7 @@
 use fold_db_core::api::*;
 use fold_db_core::transform::expr::{RangeLabel, TransformExpr};
 use fold_db_core::transform::{Reversibility, TransformDef};
-use fold_db_core::types::{
-    AccessContext, FieldAccessPolicy, FieldValue, SecurityLabel, TrustTier,
-};
+use fold_db_core::types::{AccessContext, FieldAccessPolicy, FieldValue, SecurityLabel, TrustTier};
 use serde_json::json;
 
 fn owner() -> AccessContext {
@@ -71,9 +69,18 @@ fn divide_by_zero_returns_null() {
 #[test]
 fn round_nearest() {
     let expr = TransformExpr::RoundNearest(10);
-    assert_eq!(expr.evaluate(&FieldValue::Integer(73)), FieldValue::Integer(70));
-    assert_eq!(expr.evaluate(&FieldValue::Integer(78)), FieldValue::Integer(80));
-    assert_eq!(expr.evaluate(&FieldValue::Float(73.0)), FieldValue::Integer(70));
+    assert_eq!(
+        expr.evaluate(&FieldValue::Integer(73)),
+        FieldValue::Integer(70)
+    );
+    assert_eq!(
+        expr.evaluate(&FieldValue::Integer(78)),
+        FieldValue::Integer(80)
+    );
+    assert_eq!(
+        expr.evaluate(&FieldValue::Float(73.0)),
+        FieldValue::Integer(70)
+    );
 }
 
 // ── Test: string expressions ─────────────────────────────────────────
@@ -126,7 +133,10 @@ fn array_summary() {
 #[test]
 fn array_on_empty_returns_null() {
     let input = FieldValue::Json(json!([]));
-    assert_eq!(TransformExpr::ArrayAverage.evaluate(&input), FieldValue::Null);
+    assert_eq!(
+        TransformExpr::ArrayAverage.evaluate(&input),
+        FieldValue::Null
+    );
     assert_eq!(TransformExpr::ArraySum.evaluate(&input), FieldValue::Null);
 }
 
@@ -181,10 +191,26 @@ fn json_get_field() {
 fn range_classify() {
     let expr = TransformExpr::RangeClassify {
         ranges: vec![
-            RangeLabel { min: 0, max: 59, label: "bradycardia".to_string() },
-            RangeLabel { min: 60, max: 100, label: "normal".to_string() },
-            RangeLabel { min: 101, max: 120, label: "elevated".to_string() },
-            RangeLabel { min: 121, max: 200, label: "tachycardia".to_string() },
+            RangeLabel {
+                min: 0,
+                max: 59,
+                label: "bradycardia".to_string(),
+            },
+            RangeLabel {
+                min: 60,
+                max: 100,
+                label: "normal".to_string(),
+            },
+            RangeLabel {
+                min: 101,
+                max: 120,
+                label: "elevated".to_string(),
+            },
+            RangeLabel {
+                min: 121,
+                max: 200,
+                label: "tachycardia".to_string(),
+            },
         ],
         default: "unknown".to_string(),
     };
@@ -311,10 +337,26 @@ fn register_and_use_expression_transform_via_api() {
             TransformExpr::ArrayAverage,
             TransformExpr::RangeClassify {
                 ranges: vec![
-                    RangeLabel { min: 0, max: 59, label: "bradycardia".to_string() },
-                    RangeLabel { min: 60, max: 100, label: "normal".to_string() },
-                    RangeLabel { min: 101, max: 120, label: "elevated".to_string() },
-                    RangeLabel { min: 121, max: 200, label: "tachycardia".to_string() },
+                    RangeLabel {
+                        min: 0,
+                        max: 59,
+                        label: "bradycardia".to_string(),
+                    },
+                    RangeLabel {
+                        min: 60,
+                        max: 100,
+                        label: "normal".to_string(),
+                    },
+                    RangeLabel {
+                        min: 101,
+                        max: 120,
+                        label: "elevated".to_string(),
+                    },
+                    RangeLabel {
+                        min: 121,
+                        max: 200,
+                        label: "tachycardia".to_string(),
+                    },
                 ],
                 default: "unknown".to_string(),
             },

@@ -13,10 +13,8 @@
 
 use fold_db_core::api::*;
 use fold_db_core::transform::{Reversibility, TransformDef};
-use fold_db_core::types::{
-    AccessContext, FieldAccessPolicy, FieldValue, SecurityLabel, TrustTier,
-};
-use serde_json::{json, Map, Value};
+use fold_db_core::types::{AccessContext, FieldAccessPolicy, FieldValue, SecurityLabel, TrustTier};
+use serde_json::{Map, Value, json};
 
 /// Generate per-minute readings for one week with a target resting HR.
 fn week_readings(resting_hr: i64) -> Vec<Value> {
@@ -26,11 +24,11 @@ fn week_readings(resting_hr: i64) -> Vec<Value> {
         for hour in 0..24 {
             for minute in 0..60 {
                 let base = match hour {
-                    0..=5 => resting_hr - 12,  // sleep
-                    6..=8 => resting_hr,       // morning
-                    9..=11 => resting_hr + 3,  // work
-                    12 => resting_hr + 8,      // lunch walk
-                    13..=16 => resting_hr + 2, // afternoon
+                    0..=5 => resting_hr - 12,   // sleep
+                    6..=8 => resting_hr,        // morning
+                    9..=11 => resting_hr + 3,   // work
+                    12 => resting_hr + 8,       // lunch walk
+                    13..=16 => resting_hr + 2,  // afternoon
                     17..=18 => resting_hr + 55, // exercise
                     19..=21 => resting_hr - 5,  // evening
                     _ => resting_hr - 8,        // wind down
@@ -163,7 +161,7 @@ fn setup() -> FoldDbApi {
             let pct = (change / prev * 1000.0).round() / 10.0;
 
             let direction = if change < -2.0 {
-                "improving"  // resting HR going down = fitness improving
+                "improving" // resting HR going down = fitness improving
             } else if change > 2.0 {
                 "declining"
             } else {
@@ -525,7 +523,10 @@ fn full_size_multi_week() {
         other => panic!("expected Float, got {other:?}"),
     };
     // The full week has mixed activity, so avg won't be exactly 68
-    assert!((50.0..90.0).contains(&avg), "avg {avg} should be in realistic range");
+    assert!(
+        (50.0..90.0).contains(&avg),
+        "avg {avg} should be in realistic range"
+    );
 }
 
 // ── Test: access control across derived folds ────────────────────────
@@ -616,7 +617,10 @@ fn adding_week_updates_all_derived() {
         Some(FieldValue::Float(v)) => *v,
         other => panic!("expected Float, got {other:?}"),
     };
-    assert!((avg - 85.0).abs() < 1.0, "latest avg {avg} should be ~85 after W12");
+    assert!(
+        (avg - 85.0).abs() < 1.0,
+        "latest avg {avg} should be ~85 after W12"
+    );
 
     // All avgs now has 3 entries
     let resp = api.query_fold(QueryRequest {

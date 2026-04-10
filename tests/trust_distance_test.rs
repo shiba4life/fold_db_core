@@ -9,8 +9,8 @@
 //! - Explicit assignments take precedence over all derived tiers.
 //! - Trust tiers are mutable and resolved at evaluation time.
 
-use fold_db_core::access::TrustGraph;
 use fold_db_core::TrustTier;
+use fold_db_core::access::TrustGraph;
 
 #[test]
 fn owner_tier_to_self_is_owner() {

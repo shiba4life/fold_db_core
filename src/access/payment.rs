@@ -21,11 +21,7 @@ impl PaymentGate {
 }
 
 /// Check the payment predicate P(u, F): has user u paid for fold F?
-pub fn check_payment(
-    gate: &PaymentGate,
-    context: &AccessContext,
-    fold_id: &str,
-) -> AccessDecision {
+pub fn check_payment(gate: &PaymentGate, context: &AccessContext, fold_id: &str) -> AccessDecision {
     if context.paid_folds.iter().any(|f| f == fold_id) {
         AccessDecision::Granted
     } else {

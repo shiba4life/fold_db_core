@@ -46,11 +46,17 @@ impl FoldEngine {
         &self.trust_graph
     }
 
-    pub fn register_fold(&mut self, fold: crate::types::Fold) -> Result<(), crate::registry::RegistryError> {
+    pub fn register_fold(
+        &mut self,
+        fold: crate::types::Fold,
+    ) -> Result<(), crate::registry::RegistryError> {
         self.registry.register_fold(fold)
     }
 
-    pub fn register_transform(&mut self, transform: crate::transform::RegisteredTransform) -> Result<String, crate::registry::RegistryError> {
+    pub fn register_transform(
+        &mut self,
+        transform: crate::transform::RegisteredTransform,
+    ) -> Result<String, crate::registry::RegistryError> {
         self.registry.register_transform(transform)
     }
 
@@ -103,12 +109,7 @@ impl FoldEngine {
 
         for field in &fold.fields {
             // Check all four access control layers
-            match access::check_read_access(
-                field,
-                &context,
-                fold_id,
-                fold.payment_gate.as_ref(),
-            ) {
+            match access::check_read_access(field, &context, fold_id, fold.payment_gate.as_ref()) {
                 AccessDecision::Granted => {}
                 AccessDecision::Denied(reason) => {
                     // All-or-nothing: any field failure -> Nothing
@@ -173,17 +174,10 @@ impl FoldEngine {
             .ok_or(WriteError::FoldNotFound)?
             .clone();
 
-        let field = fold
-            .field(field_name)
-            .ok_or(WriteError::FieldNotFound)?;
+        let field = fold.field(field_name).ok_or(WriteError::FieldNotFound)?;
 
         // Check write access
-        match access::check_write_access(
-            field,
-            &context,
-            fold_id,
-            fold.payment_gate.as_ref(),
-        ) {
+        match access::check_write_access(field, &context, fold_id, fold.payment_gate.as_ref()) {
             AccessDecision::Granted => {}
             AccessDecision::Denied(reason) => {
                 self.audit.record(
@@ -210,10 +204,7 @@ impl FoldEngine {
                 && let Some(inverse_value) = transform.apply_inverse(&value)
             {
                 let source_fold_id = source_fold_id.clone();
-                let source_field = field
-                    .source_field_name
-                    .as_deref()
-                    .unwrap_or(field_name);
+                let source_field = field.source_field_name.as_deref().unwrap_or(field_name);
                 return self.write(
                     &source_fold_id,
                     source_field,
@@ -289,10 +280,7 @@ impl FoldEngine {
                 let source_result = self.query(source_fold_id, &owner_context)?;
 
                 // Get the source field value (use source_field_name if mapped, else same name)
-                let source_name = field
-                    .source_field_name
-                    .as_deref()
-                    .unwrap_or(&field.name);
+                let source_name = field.source_field_name.as_deref().unwrap_or(&field.name);
                 let source_value = source_result.get(source_name)?;
 
                 // Apply the transform

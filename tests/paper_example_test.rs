@@ -196,7 +196,8 @@ fn write_requires_trust_tier() {
     assert!(result.is_ok());
 
     // Researcher cannot write to F_clin (Outer < Inner required for write)
-    let researcher_ctx = AccessContext::remote_single("researcher_bob", "personal", TrustTier::Outer);
+    let researcher_ctx =
+        AccessContext::remote_single("researcher_bob", "personal", TrustTier::Outer);
     let result = engine.write(
         "f_clin",
         "diagnosis",
@@ -264,7 +265,8 @@ fn audit_log_records_all_events() {
     let mut engine = setup_hospital_engine();
 
     let owner_ctx = AccessContext::owner("patient_alice");
-    let researcher_ctx = AccessContext::remote_single("researcher_bob", "personal", TrustTier::Outer);
+    let researcher_ctx =
+        AccessContext::remote_single("researcher_bob", "personal", TrustTier::Outer);
 
     engine.query("f_clin", &owner_ctx);
     engine.query("f_clin", &researcher_ctx);

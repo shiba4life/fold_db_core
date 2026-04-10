@@ -30,7 +30,10 @@ fn create_and_query_fold() {
     api.create_fold(CreateFoldRequest {
         fold_id: "f1".to_string(),
         owner_id: "owner".to_string(),
-        fields: vec![simple_field_def("name", FieldValue::String("Alice".to_string()))],
+        fields: vec![simple_field_def(
+            "name",
+            FieldValue::String("Alice".to_string()),
+        )],
         payment_gate: None,
     })
     .unwrap();
@@ -42,7 +45,10 @@ fn create_and_query_fold() {
 
     assert!(resp.fields.is_some());
     let fields = resp.fields.unwrap();
-    assert_eq!(fields.get("name"), Some(&FieldValue::String("Alice".to_string())));
+    assert_eq!(
+        fields.get("name"),
+        Some(&FieldValue::String("Alice".to_string()))
+    );
 }
 
 #[test]
@@ -393,7 +399,10 @@ fn audit_events_collected() {
     api.create_fold(CreateFoldRequest {
         fold_id: "aud".to_string(),
         owner_id: "owner".to_string(),
-        fields: vec![simple_field_def("data", FieldValue::String("hello".to_string()))],
+        fields: vec![simple_field_def(
+            "data",
+            FieldValue::String("hello".to_string()),
+        )],
         payment_gate: None,
     })
     .unwrap();

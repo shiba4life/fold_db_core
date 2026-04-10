@@ -12,9 +12,7 @@
 
 use fold_db_core::api::*;
 use fold_db_core::transform::{Reversibility, TransformDef};
-use fold_db_core::types::{
-    AccessContext, FieldAccessPolicy, FieldValue, SecurityLabel, TrustTier,
-};
+use fold_db_core::types::{AccessContext, FieldAccessPolicy, FieldValue, SecurityLabel, TrustTier};
 
 fn owner() -> AccessContext {
     AccessContext::owner("company")
@@ -137,9 +135,13 @@ fn setup() -> FoldDbApi {
     api.create_fold(CreateFoldRequest {
         fold_id: "hr_view".to_string(),
         owner_id: "company".to_string(),
-        fields: vec![
-            derived_field("salary_eur", "usd_to_eur", "employee_record", Some("salary"), TrustTier::Inner),
-        ],
+        fields: vec![derived_field(
+            "salary_eur",
+            "usd_to_eur",
+            "employee_record",
+            Some("salary"),
+            TrustTier::Inner,
+        )],
         payment_gate: None,
     })
     .unwrap();
@@ -150,8 +152,20 @@ fn setup() -> FoldDbApi {
         fold_id: "directory_view".to_string(),
         owner_id: "company".to_string(),
         fields: vec![
-            derived_field("salary_band", "salary_band", "employee_record", Some("salary"), TrustTier::Outer),
-            derived_field("name", "uppercase", "employee_record", None, TrustTier::Outer),
+            derived_field(
+                "salary_band",
+                "salary_band",
+                "employee_record",
+                Some("salary"),
+                TrustTier::Outer,
+            ),
+            derived_field(
+                "name",
+                "uppercase",
+                "employee_record",
+                None,
+                TrustTier::Outer,
+            ),
         ],
         payment_gate: None,
     })
@@ -163,8 +177,20 @@ fn setup() -> FoldDbApi {
         fold_id: "analytics_view".to_string(),
         owner_id: "company".to_string(),
         fields: vec![
-            derived_field("name", "uppercase", "employee_record", None, TrustTier::Public),
-            derived_field("department", "uppercase", "employee_record", None, TrustTier::Public),
+            derived_field(
+                "name",
+                "uppercase",
+                "employee_record",
+                None,
+                TrustTier::Public,
+            ),
+            derived_field(
+                "department",
+                "uppercase",
+                "employee_record",
+                None,
+                TrustTier::Public,
+            ),
         ],
         payment_gate: None,
     })
@@ -425,7 +451,10 @@ fn cannot_write_through_irreversible_derived_folds() {
         context: ctx.clone(),
         signature: vec![],
     });
-    assert!(result.is_err(), "write to irreversible salary_band should fail");
+    assert!(
+        result.is_err(),
+        "write to irreversible salary_band should fail"
+    );
 
     // Cannot write to analytics_view (uppercase is irreversible)
     let result = api.write_field(WriteRequest {
@@ -435,7 +464,10 @@ fn cannot_write_through_irreversible_derived_folds() {
         context: ctx,
         signature: vec![],
     });
-    assert!(result.is_err(), "write to irreversible uppercase should fail");
+    assert!(
+        result.is_err(),
+        "write to irreversible uppercase should fail"
+    );
 
     // Source data unchanged
     let resp = api.query_fold(QueryRequest {
@@ -474,7 +506,10 @@ fn access_policies_enforced_per_derived_fold() {
         fold_id: "directory_view".to_string(),
         context: AccessContext::remote_single("team_lead", "personal", TrustTier::Trusted),
     });
-    assert!(resp.fields.is_some(), "team_lead should read directory_view");
+    assert!(
+        resp.fields.is_some(),
+        "team_lead should read directory_view"
+    );
 
     let resp = api.query_fold(QueryRequest {
         fold_id: "hr_view".to_string(),
@@ -499,7 +534,10 @@ fn access_policies_enforced_per_derived_fold() {
         fold_id: "directory_view".to_string(),
         context: AccessContext::remote_single("intern", "personal", TrustTier::Public),
     });
-    assert!(resp.fields.is_none(), "intern should NOT read directory_view");
+    assert!(
+        resp.fields.is_none(),
+        "intern should NOT read directory_view"
+    );
 
     let resp = api.query_fold(QueryRequest {
         fold_id: "hr_view".to_string(),

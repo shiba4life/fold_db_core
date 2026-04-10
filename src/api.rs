@@ -143,14 +143,18 @@ impl FoldDbApi {
     // -- Fold operations -----------------------------------------------------
 
     pub fn create_fold(&mut self, req: CreateFoldRequest) -> Result<String, ApiError> {
-        let fields: Vec<Field> = req.fields.into_iter().map(|fd| {
-            let mut f = Field::new(fd.name, fd.value, fd.label, fd.policy);
-            f.capabilities = fd.capabilities;
-            f.transform_id = fd.transform_id;
-            f.source_fold_id = fd.source_fold_id;
-            f.source_field_name = fd.source_field_name;
-            f
-        }).collect();
+        let fields: Vec<Field> = req
+            .fields
+            .into_iter()
+            .map(|fd| {
+                let mut f = Field::new(fd.name, fd.value, fd.label, fd.policy);
+                f.capabilities = fd.capabilities;
+                f.transform_id = fd.transform_id;
+                f.source_fold_id = fd.source_fold_id;
+                f.source_field_name = fd.source_field_name;
+                f
+            })
+            .collect();
 
         let mut fold = Fold::new(&req.fold_id, &req.owner_id, fields);
         if let Some(gate) = req.payment_gate {
@@ -250,9 +254,7 @@ impl FoldDbApi {
     }
 
     pub fn set_trust_override(&mut self, owner: &str, user: &str, tier: TrustTier) {
-        self.engine
-            .trust_graph
-            .set_override(owner, user, tier);
+        self.engine.trust_graph.set_override(owner, user, tier);
     }
 
     pub fn remove_trust_override(&mut self, owner: &str, user: &str) {
@@ -265,10 +267,7 @@ impl FoldDbApi {
 
     // -- History & Rollback --------------------------------------------------
 
-    pub fn get_field_history(
-        &mut self,
-        req: HistoryRequest,
-    ) -> Result<Vec<StoreEntry>, ApiError> {
+    pub fn get_field_history(&mut self, req: HistoryRequest) -> Result<Vec<StoreEntry>, ApiError> {
         self.require_read_access(&req.fold_id, &req.field_name, &req.context)?;
         let history = self
             .engine
@@ -278,10 +277,7 @@ impl FoldDbApi {
         Ok(history)
     }
 
-    pub fn get_field_version(
-        &mut self,
-        req: VersionRequest,
-    ) -> Result<StoreEntry, ApiError> {
+    pub fn get_field_version(&mut self, req: VersionRequest) -> Result<StoreEntry, ApiError> {
         self.require_read_access(&req.fold_id, &req.field_name, &req.context)?;
         self.engine
             .store
@@ -290,10 +286,7 @@ impl FoldDbApi {
             .ok_or(ApiError::VersionNotFound(req.version))
     }
 
-    pub fn rollback_field(
-        &mut self,
-        req: RollbackRequest,
-    ) -> Result<WriteResponse, ApiError> {
+    pub fn rollback_field(&mut self, req: RollbackRequest) -> Result<WriteResponse, ApiError> {
         // Check write access before exposing historical values
         self.require_write_access(&req.fold_id, &req.field_name, &req.context)?;
 
@@ -369,12 +362,8 @@ impl FoldDbApi {
         let (fold, context) = self.resolve_fold_and_context(fold_id, field_name, context)?;
         let field = fold.field(field_name).unwrap();
 
-        match crate::access::check_read_access(
-            field,
-            &context,
-            fold_id,
-            fold.payment_gate.as_ref(),
-        ) {
+        match crate::access::check_read_access(field, &context, fold_id, fold.payment_gate.as_ref())
+        {
             crate::access::AccessDecision::Granted => Ok(()),
             crate::access::AccessDecision::Denied(reason) => {
                 Err(ApiError::AccessDenied(reason.to_string()))

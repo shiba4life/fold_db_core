@@ -3,7 +3,7 @@ mod payment;
 mod trust;
 
 pub use capability::check_capabilities;
-pub use payment::{check_payment, PaymentGate};
+pub use payment::{PaymentGate, check_payment};
 pub use trust::TrustGraph;
 
 use crate::types::{AccessContext, Field, TrustTier};

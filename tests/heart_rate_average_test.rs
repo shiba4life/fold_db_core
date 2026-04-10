@@ -12,9 +12,7 @@
 
 use fold_db_core::api::*;
 use fold_db_core::transform::{Reversibility, TransformDef};
-use fold_db_core::types::{
-    AccessContext, FieldAccessPolicy, FieldValue, SecurityLabel, TrustTier,
-};
+use fold_db_core::types::{AccessContext, FieldAccessPolicy, FieldValue, SecurityLabel, TrustTier};
 use serde_json::json;
 
 /// Generate realistic per-minute heart rate data for a given number of minutes.
@@ -27,14 +25,20 @@ fn generate_week_readings() -> Vec<i64> {
         for hour in 0..24 {
             for minute in 0..60 {
                 let base = match hour {
-                    0..=5 => 58,    // sleeping
-                    6..=7 => 72,    // waking up
-                    8..=11 => 75,   // morning work
-                    12 => 80,       // lunch walk
-                    13..=16 => 74,  // afternoon work
-                    17..=18 => if day < 5 { 130 } else { 70 }, // weekday exercise
-                    19..=21 => 68,  // evening rest
-                    _ => 62,        // winding down
+                    0..=5 => 58,   // sleeping
+                    6..=7 => 72,   // waking up
+                    8..=11 => 75,  // morning work
+                    12 => 80,      // lunch walk
+                    13..=16 => 74, // afternoon work
+                    17..=18 => {
+                        if day < 5 {
+                            130
+                        } else {
+                            70
+                        }
+                    } // weekday exercise
+                    19..=21 => 68, // evening rest
+                    _ => 62,       // winding down
                 };
                 // Add some variation based on minute position
                 let variation = ((minute as i64 * 7 + hour as i64 * 13 + day as i64 * 31) % 11) - 5;
@@ -73,10 +77,7 @@ fn setup() -> FoldDbApi {
         Box::new(|v| match v {
             FieldValue::Json(arr) => {
                 if let Some(values) = arr.as_array() {
-                    let sum: f64 = values
-                        .iter()
-                        .filter_map(|v| v.as_f64())
-                        .sum();
+                    let sum: f64 = values.iter().filter_map(|v| v.as_f64()).sum();
                     let count = values.iter().filter(|v| v.as_f64().is_some()).count();
                     if count > 0 {
                         let avg = (sum / count as f64 * 10.0).round() / 10.0;
@@ -108,10 +109,7 @@ fn setup() -> FoldDbApi {
         Box::new(|v| match v {
             FieldValue::Json(arr) => {
                 if let Some(values) = arr.as_array() {
-                    let nums: Vec<f64> = values
-                        .iter()
-                        .filter_map(|v| v.as_f64())
-                        .collect();
+                    let nums: Vec<f64> = values.iter().filter_map(|v| v.as_f64()).collect();
                     if nums.is_empty() {
                         return FieldValue::Null;
                     }
@@ -148,10 +146,7 @@ fn setup() -> FoldDbApi {
         Box::new(|v| match v {
             FieldValue::Json(arr) => {
                 if let Some(values) = arr.as_array() {
-                    let nums: Vec<f64> = values
-                        .iter()
-                        .filter_map(|v| v.as_f64())
-                        .collect();
+                    let nums: Vec<f64> = values.iter().filter_map(|v| v.as_f64()).collect();
                     if nums.is_empty() {
                         return FieldValue::String("no data".to_string());
                     }
@@ -456,7 +451,10 @@ fn access_control_on_aggregated_views() {
         fold_id: "hr_readings".to_string(),
         context: AccessContext::remote_single("cardiologist", "personal", TrustTier::Inner),
     });
-    assert!(resp.fields.is_some(), "cardiologist should see raw readings");
+    assert!(
+        resp.fields.is_some(),
+        "cardiologist should see raw readings"
+    );
 
     let resp = api.query_fold(QueryRequest {
         fold_id: "weekly_summary".to_string(),
