@@ -8,10 +8,10 @@ This is a ground-up rewrite exploring whether the core database can be implement
 
 Fold DB is a database in which data is never accessed directly. Users interact with **folds** — named interfaces that sit in front of stored values and enforce access policies on every operation. Each fold defines which fields are visible, what transformations are applied, and who may read or write, using four conjunctive mechanisms:
 
-1. **Trust distance** — owner-assigned distances with transitive propagation
+1. **Trust tiers** — per-domain trust levels (Public, Outer, Trusted, Inner, Owner)
 2. **Cryptographic capabilities** — bounded quotas tied to public keys
-3. **Security labels** — lattice-based information flow control
-4. **Payment gates** — economic safeguards with configurable cost functions
+3. **Security labels** — lattice-based information flow control (for transform validation)
+4. **Payment gates** — fixed-cost economic safeguards
 
 ## Architecture
 
@@ -24,18 +24,18 @@ Fold DB is a database in which data is never accessed directly. Users interact w
 │  Monadic evaluation: Fold[a] = C → Maybe a  │
 ├──────────┬──────────┬───────────┬───────────┤
 │ Registry │  Store   │   Audit   │   Trust   │
-│  (folds, │ (append- │   (every  │  (graph   │
-│ transforms)│  only)  │  access)  │ distance) │
+│  (folds, │ (append- │   (every  │  (per-    │
+│ transforms)│  only)  │  access)  │  domain)  │
 └──────────┴──────────┴───────────┴───────────┘
 ```
 
 | Module | Paper Section | What it does |
 |--------|:---:|---|
 | `api/` | — | Public API: serializable request/response types, history, rollback |
-| `types/` | §3.1 | Fold, Field, FieldValue, AccessContext, SecurityLabel, TrustDistancePolicy |
-| `access/trust.rs` | §4.1 | Additive trust distances, shortest-path resolution, overrides, revocation |
+| `types/` | §3.1 | Fold, Field, FieldValue, AccessContext, TrustTier, FieldAccessPolicy, SecurityLabel |
+| `access/trust.rs` | §4.1 | Per-domain trust tiers, graph resolution, overrides, revocation |
 | `access/capability.rs` | §4.2 | WX_k / RX_k capabilities with bounded quotas |
-| `access/payment.rs` | §4.4 | Payment gates (linear, exponential, fixed) |
+| `access/payment.rs` | §4.4 | Payment gates (fixed cost) |
 | `engine/` | §3.2, §3.4 | Monadic execution with all-or-nothing failure, fold composition via DAG |
 | `transform/` | §3.3, §8 | Reversible/irreversible transforms, content-addressed registry |
 | `store/` | §6 | Append-only store with full version history |
@@ -48,7 +48,7 @@ Fold DB is a database in which data is never accessed directly. Users interact w
 
 ```rust
 use fold_db_core::api::*;
-use fold_db_core::types::{AccessContext, FieldValue, SecurityLabel, TrustDistancePolicy};
+use fold_db_core::types::{AccessContext, FieldAccessPolicy, FieldValue, SecurityLabel, TrustTier};
 
 let mut api = FoldDbApi::new();
 
@@ -60,7 +60,7 @@ api.create_fold(CreateFoldRequest {
         name: "email".to_string(),
         value: FieldValue::String("alice@example.com".to_string()),
         label: SecurityLabel::new(2, "PII"),
-        policy: TrustDistancePolicy::new(0, 1), // W0 R1
+        policy: FieldAccessPolicy::new(TrustTier::Owner, TrustTier::Outer), // write: Owner, read: Outer
         capabilities: vec![],
         transform_id: None,
         source_fold_id: None,
@@ -69,27 +69,27 @@ api.create_fold(CreateFoldRequest {
     payment_gate: None,
 }).unwrap();
 
-// Assign trust
-api.assign_trust("alice", "bob", 1);
+// Assign trust — bob gets Inner tier in the default domain
+api.assign_trust("alice", "bob", TrustTier::Inner);
 
-// Bob queries — gets the projection
+// Bob queries — Inner(3) >= Outer(1) → gets the projection
 let resp = api.query_fold(QueryRequest {
     fold_id: "my_fold".to_string(),
-    context: AccessContext::new("bob", 1),
+    context: AccessContext::remote_single("bob", "default", TrustTier::Inner),
 });
 assert!(resp.fields.is_some());
 
-// Stranger queries — gets Nothing
+// Stranger queries — Public(0) < Outer(1) → gets Nothing
 let resp = api.query_fold(QueryRequest {
     fold_id: "my_fold".to_string(),
-    context: AccessContext::new("stranger", 5),
+    context: AccessContext::remote_single("stranger", "default", TrustTier::Public),
 });
 assert!(resp.fields.is_none());
 ```
 
-### Trust distance resolution
+### Trust tier resolution
 
-When a trust graph entry exists for the caller, the engine automatically resolves their trust distance from the graph, overriding the value in `AccessContext.trust_distance`. This means the graph is the source of truth — the context field is only used as a fallback when no graph path exists.
+When a trust graph entry exists for the caller, the engine resolves their trust tier from the graph, overriding the value in `AccessContext.tiers`. The graph is the source of truth — the context tiers map is only used as a fallback when no graph path exists.
 
 ## Build & Test
 
